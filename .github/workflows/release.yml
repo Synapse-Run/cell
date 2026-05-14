@@ -41,26 +41,32 @@ jobs:
           # once the publisher is configured at https://pypi.org/manage/project/synapserun/settings/publishing/
 
   # ── npm: publish JS SDK ─────────────────────────────────
+  # Uses npm Trusted Publishers (OIDC) — no NODE_AUTH_TOKEN secret.
+  # Configure the publisher once at:
+  #   https://www.npmjs.com/package/@runsynapse/sdk/access  →  Trusted publishing
+  # Required: Node >= 22.14.0, npm >= 11.5.1. Provenance is automatic.
   npm:
     name: Publish to npm
     runs-on: ubuntu-latest
     environment: npm
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-      - name: Build + publish
+          node-version: "22"
+      - name: Ensure npm CLI >= 11.5.1
+        run: npm install -g npm@latest
+      - name: Build + publish via Trusted Publisher OIDC
         run: |
           cd sdk/js
           npm ci
           npm run build --if-present
-          npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+          npm publish --access public
 
   # ── GHCR: container image for self-hosted gateway ───────
   ghcr:
