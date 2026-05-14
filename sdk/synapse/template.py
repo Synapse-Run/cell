@@ -12,7 +12,7 @@ import subprocess
 import shutil
 import urllib.request
 import urllib.error
-from typing import List, Dict, Optional, Any
+from typing import Dict, Optional, Any
 
 class TemplateError(Exception):
     pass

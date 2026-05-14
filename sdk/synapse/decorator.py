@@ -35,7 +35,10 @@ import inspect
 import os
 import textwrap
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable, List, Tuple, Union
+from typing import Any, Callable, List, Tuple, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from synapse.client import ExecutionResult  # noqa: F401  (used in string-form annotations)
 
 
 class SynapseFunction:
@@ -190,7 +193,7 @@ class SynapseFunction:
                 try:
                     result = future.result()
                     results[idx] = result.result
-                except Exception as e:
+                except Exception:
                     results[idx] = None
 
         return results

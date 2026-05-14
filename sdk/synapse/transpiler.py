@@ -33,9 +33,7 @@ Supported Python subset:
 """
 
 import ast
-import struct
 import sys
-from typing import Optional
 
 
 class TranspileError(Exception):
@@ -2377,7 +2375,7 @@ class SynTranspiler(ast.NodeVisitor):
         new_val = f"{op} {read_code} {value}"
         # Now do the attribute write
         # Reconstruct the assign as target.attr = new_val
-        dummy_assign = ast.Assign(
+        ast.Assign(
             targets=[target],
             value=ast.Constant(value=0)  # placeholder
         )

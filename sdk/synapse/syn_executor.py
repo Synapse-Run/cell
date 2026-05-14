@@ -15,8 +15,7 @@ import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
-from typing import Optional, Union
-from pathlib import Path
+from typing import Optional
 
 
 @dataclass

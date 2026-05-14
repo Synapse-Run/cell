@@ -318,7 +318,9 @@ class Cell:
     @classmethod
     def create_volume(cls, volume_id: Optional[str] = None, api_key: Optional[str] = None, api_url: str = "http://localhost:8002") -> dict:
         """Create a new persistent volume for use by cells."""
-        import os, urllib.request, json
+        import os
+        import urllib.request
+        import json
         api_key = api_key or os.environ.get("SYNAPSE_API_KEY")
         headers = {"Content-Type": "application/json"}
         if api_key:
@@ -1499,7 +1501,8 @@ class Cell:
         Returns:
             List of available MCP server dicts.
         """
-        import urllib.request, json
+        import urllib.request
+        import json
         url = f"{api_url}/v1/mcp/catalog"
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req) as resp:
@@ -1537,7 +1540,8 @@ class Cell:
         Args:
             template_name: Template name.
         """
-        import urllib.request, json
+        import urllib.request
+        import json
         url = f"{api_url}/v1/templates/{template_name}/build"
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req) as resp:
@@ -1551,7 +1555,8 @@ class Cell:
         Args:
             template_name: Template name to rebuild.
         """
-        import urllib.request, json
+        import urllib.request
+        import json
         url = f"{api_url}/v1/templates/{template_name}/rebuild"
         req = urllib.request.Request(url, data=b"{}", method="POST")
         req.add_header("Content-Type", "application/json")
@@ -1568,7 +1573,8 @@ class Cell:
             token: Registry access token.
             registry_url: Registry URL (default: Synapse registry).
         """
-        import urllib.request, json
+        import urllib.request
+        import json
         url = f"{api_url}/v1/templates/registry/auth"
         data = json.dumps({"token": token, "registry_url": registry_url}).encode()
         req = urllib.request.Request(url, data=data, method="POST")
@@ -1661,7 +1667,8 @@ class Cell:
     @classmethod
     def list_teams(cls, api_url: str = "http://localhost:8002") -> list:
         """List teams."""
-        import urllib.request, json
+        import urllib.request
+        import json
         url = f"{api_url}/v1/teams"
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req) as resp:
@@ -1671,7 +1678,8 @@ class Cell:
     def get_team_metrics(cls, team_id: str = "default",
                          api_url: str = "http://localhost:8002") -> dict:
         """Get team-level metrics."""
-        import urllib.request, json
+        import urllib.request
+        import json
         url = f"{api_url}/v1/teams/{team_id}/metrics"
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req) as resp:
@@ -1695,7 +1703,8 @@ class Cell:
         Returns:
             List of event dicts.
         """
-        import urllib.request, json
+        import urllib.request
+        import json
         url = f"{api_url}/v1/events"
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req) as resp:
@@ -1713,7 +1722,8 @@ class Cell:
         Returns:
             Dict with webhook_id, url, events, created_at.
         """
-        import urllib.request, json as json_mod
+        import urllib.request
+        import json as json_mod
         payload = {"url": url, "events": events or ["*"]}
         data = json_mod.dumps(payload).encode()
         req = urllib.request.Request(
@@ -1725,7 +1735,8 @@ class Cell:
     @classmethod
     def list_webhooks(cls, api_url: str = "http://localhost:8002") -> list:
         """List all registered webhooks."""
-        import urllib.request, json
+        import urllib.request
+        import json
         req = urllib.request.Request(f"{api_url}/v1/webhooks")
         with urllib.request.urlopen(req) as resp:
             return json.loads(resp.read())
@@ -1734,7 +1745,8 @@ class Cell:
     def delete_webhook(cls, webhook_id: str,
                        api_url: str = "http://localhost:8002") -> dict:
         """Delete a webhook by ID."""
-        import urllib.request, json
+        import urllib.request
+        import json
         req = urllib.request.Request(
             f"{api_url}/v1/webhooks/{webhook_id}", method="DELETE")
         with urllib.request.urlopen(req) as resp:
@@ -1817,7 +1829,8 @@ class Cell:
         Returns:
             List of template dicts with name, description, runtime, packages, category.
         """
-        import urllib.request, json
+        import urllib.request
+        import json
         url = f"{api_url}/v1/templates/library"
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req) as resp:
@@ -1831,7 +1844,8 @@ class Cell:
         Args:
             name: Template name from the library catalog.
         """
-        import urllib.request, json
+        import urllib.request
+        import json
         data = json.dumps({"name": name}).encode()
         req = urllib.request.Request(
             f"{api_url}/v1/templates/library/install",
@@ -1868,7 +1882,8 @@ class Cell:
         Returns:
             Dict with supported providers, requirements, deployment methods.
         """
-        import urllib.request, json
+        import urllib.request
+        import json
         url = f"{api_url}/v1/deploy/info"
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req) as resp:
@@ -1881,7 +1896,8 @@ class Cell:
         Returns:
             Dict with proto (string) and version.
         """
-        import urllib.request, json
+        import urllib.request
+        import json
         url = f"{api_url}/v1/grpc/proto"
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req) as resp:

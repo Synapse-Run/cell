@@ -16,8 +16,7 @@ Usage:
 """
 from __future__ import annotations
 
-import asyncio
-from typing import Any, Optional
+from typing import Any
 
 from synapse.async_cell import AsyncCell
 

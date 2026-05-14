@@ -22,12 +22,9 @@ from synapse.cell import (
     EntryInfo,
     SandboxInfo,
     SandboxState,
-    SandboxNetworkOpts,
-    SandboxLifecycle,
     SandboxQuery,
     SandboxPaginator,
 )
-from synapse.template import Template
 
 
 # ─── E2B-Compatible Result Types ────────────────────────────────────

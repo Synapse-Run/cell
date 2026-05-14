@@ -39,8 +39,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install SDK
-        run: pip install -e ".[all]"
+      - name: Install SDK + test deps
+        # `[all]` pulls integration frameworks (langchain, crewai, etc.); pytest is added
+        # explicitly since it's a dev-time dep, not a runtime dep of the wheel.
+        run: |
+          pip install -e ".[all]"
+          pip install pytest pytest-asyncio
         working-directory: sdk
       - name: Run unit tests
         run: python -m pytest tests/ -v --ignore=tests/benchmark_compare.py --ignore=tests/benchmark_e2b.py

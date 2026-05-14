@@ -37,8 +37,8 @@ import json
 import os
 import re
 import shlex
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, List, Tuple
 
 
 # ─── Exceptions + data classes ───────────────────────────────────
@@ -178,7 +178,7 @@ def _handle_from(d: Directive, spec: Dict, warnings: List[Warning]) -> None:
     if ":" in image_ref:
         image, tag = image_ref.split(":", 1)
     else:
-        image, tag = image_ref, "latest"
+        image, _tag = image_ref, "latest"
     image = image.lower()
 
     if image in ("python", "python3"):
@@ -187,8 +187,8 @@ def _handle_from(d: Directive, spec: Dict, warnings: List[Warning]) -> None:
         spec["runtime"] = "javascript"
     elif image == "scratch":
         raise TranspileError(
-            f"FROM scratch requires a statically-linked Wasm module. "
-            f"Use runtime='python3' or 'javascript' and add your code via COPY.",
+            "FROM scratch requires a statically-linked Wasm module. "
+            "Use runtime='python3' or 'javascript' and add your code via COPY.",
             line=d.line,
             migration_hint=UNSUPPORTED_MIGRATION["custom-base-image"],
         )

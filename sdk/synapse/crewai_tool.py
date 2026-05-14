@@ -28,7 +28,7 @@ Usage:
 Requires: pip install crewai
 """
 import os
-from typing import Any, Optional
+from typing import Any
 
 try:
     from crewai.tools import BaseTool as CrewBaseTool

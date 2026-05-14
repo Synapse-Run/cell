@@ -34,7 +34,6 @@ except ImportError:
         def _run(self, *a, **kw): raise NotImplementedError
         def run(self, *a, **kw): return self._run(*a, **kw)
 
-from typing import Optional
 
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _project_root not in sys.path:

@@ -19,12 +19,11 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Optional
 
 from synapse.cell import (
     Cell,
     CellResult,
-    CellError,
     SandboxInfo,
     ProcessHandle,
 )

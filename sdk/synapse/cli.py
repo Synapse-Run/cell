@@ -266,7 +266,7 @@ def cmd_version(args):
         print(f"  Gateway:     {body.get('version', 'unknown')} ({body.get('status', '?')})")
         print(f"  Endpoint:    {api_url}")
     except Exception:
-        print(f"  Gateway:     not reachable")
+        print("  Gateway:     not reachable")
 
 
 # ─── Legacy commands (backward compat) ───────────────────────────
