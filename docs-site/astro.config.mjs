@@ -3,7 +3,8 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
-  site: 'https://docs.synapse.run',
+  site: 'https://synapse-run.github.io',
+  base: '/cell/',
   integrations: [
     starlight({
       title: 'Synapse Docs',
