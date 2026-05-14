@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "synapserun"
-version = "0.5.2"
+version = "0.6.0"
 description = "Synapse Cell SDK — E2B-compatible sandboxed code execution, 200x faster, with streaming, filesystem, git, PTY, Dockerfile transpilation, and bundled Wasm runtimes."
 readme = "README.md"
 requires-python = ">=3.10"

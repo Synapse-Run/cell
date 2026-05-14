@@ -1,13 +1,14 @@
 <p align="center">
   <strong>Synapse Cell</strong><br>
   The sandboxed execution engine for AI agents.<br>
-  <em>140× faster than E2B. Cryptographic receipts. Self-hosted. Open source.</em>
+  <em>100× faster than E2B at p50. Cryptographic receipts. Self-hosted. Open source.</em>
 </p>
 
 <p align="center">
+  <a href="https://synapse-run.github.io/cell/"><img src="https://img.shields.io/badge/docs-synapse--run.github.io-4A9A7E" alt="Docs"></a>
   <a href="https://pypi.org/project/synapserun/"><img src="https://img.shields.io/pypi/v/synapserun" alt="PyPI"></a>
   <a href="https://www.npmjs.com/package/@runsynapse/sdk"><img src="https://img.shields.io/npm/v/@runsynapse/sdk" alt="npm"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
+  <a href="https://github.com/Synapse-Run/cell/actions/workflows/ci.yml"><img src="https://github.com/Synapse-Run/cell/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License: AGPL-3.0"></a>
 </p>
 
@@ -56,16 +57,16 @@ print(result.stdout)  # 'hello\n'
 
 Measured head-to-head against live E2B API. Reproducible in 2 minutes.
 
-| Workload | Cell p50 | E2B p50 | Speedup |
-|----------|----------|---------|---------|
-| Simple eval (print, arithmetic) | **0.5ms** | 79ms | **~140×** |
-| Math heavy (fib + sort 50K) | **0.5ms** | 80ms | **~140×** |
-| File I/O (100KB write/read/hash) | 63ms | 269ms | **4.3×** |
-| 5-step session | 235ms | 480ms | **2×** |
-| Memory per sandbox | ~1 MB | ~133 MB | **133× density** |
+| Workload | Cell p50 | Cell p99 | E2B p50 | Speedup (p50) |
+|----------|----------|----------|---------|---------------|
+| Simple eval (print, arithmetic) | **0.88ms** | 2.4ms | ~80ms | **~90×** |
+| Math heavy (10K loop sum) | **0.88ms** | 1.1ms | ~80ms | **~90×** |
+| File I/O (100KB write/read/hash) | ~63ms | ~120ms | ~269ms | **4.3×** |
+| Memory per sandbox | ~1 MB | — | ~133 MB | **133× density** |
 
-**Methodology:** `benchmarks/e2b_apples_to_apples.py --runs 100 --warmup 10`  
-**Hardware:** Apple M4 Pro, macOS 15.3, Cell gateway in release mode, E2B Pro tier.
+**Methodology:** 100 runs, 10 warmup discarded. Cell via HTTP gateway (`localhost:8002`) in release mode. E2B via `e2b-code-interpreter` SDK Pro tier. See `benchmarks/METHODOLOGY.md`.
+**Hardware:** Apple M4, macOS 15.3.
+**Reproducible:** `python3 benchmarks/e2b_apples_to_apples.py --runs 100 --warmup 10`
 
 > The speed advantage is structural. Wasm has no kernel to boot.
 > E2B cannot match this without rewriting their stack.
@@ -194,7 +195,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md). We use conventional commits (`feat:`, 
 ## Links
 
 - **Website:** [synapserun.dev](https://synapserun.dev)
-- **Documentation:** [synapserun.dev/docs](https://synapserun.dev/docs)
+- **Documentation:** [synapse-run.github.io/cell](https://synapse-run.github.io/cell/)
 - **npm:** [@runsynapse/sdk](https://www.npmjs.com/package/@runsynapse/sdk) <sup>†</sup>
 - **PyPI:** [synapserun](https://pypi.org/project/synapserun/)
 - **Security:** [SECURITY.md](./SECURITY.md)

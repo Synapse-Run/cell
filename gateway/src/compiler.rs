@@ -666,13 +666,13 @@ impl Emitter {
             Node::BinaryExpr { left, right, .. } => Self::has_f32_literal(left) || Self::has_f32_literal(right),
             Node::IfStmt { test, consequent, alternate } => {
                 Self::has_f32_literal(test) || Self::has_f32_literal(consequent)
-                || alternate.as_ref().map_or(false, |a| Self::has_f32_literal(a))
+                || alternate.as_ref().is_some_and(|a| Self::has_f32_literal(a))
             }
             Node::WhileStmt { test, body } => Self::has_f32_literal(test) || Self::has_f32_literal(body),
-            Node::Block(items) => items.iter().any(|n| Self::has_f32_literal(n)),
+            Node::Block(items) => items.iter().any(Self::has_f32_literal),
             Node::VarDecl { init, .. } => Self::has_f32_literal(init),
             Node::VarAssign { value, .. } => Self::has_f32_literal(value),
-            Node::Call { args, .. } => args.iter().any(|n| Self::has_f32_literal(n)),
+            Node::Call { args, .. } => args.iter().any(Self::has_f32_literal),
             Node::Convert { arg, .. } => Self::has_f32_literal(arg),
             _ => false,
         }
@@ -777,11 +777,10 @@ impl Emitter {
                 }
                 
                 // Comparisons return i32, extend to i64
-                if matches!(op.as_str(), "==" | "===" | "!=" | ">" | "<" | ">=" | "<=") {
-                    if !(!use_f32 && op == "!=") {
+                if matches!(op.as_str(), "==" | "===" | "!=" | ">" | "<" | ">=" | "<=")
+                    && !(!use_f32 && op == "!=") {
                         result.push(0xAD); // i64.extend_i32_u
                     }
-                }
                 result
             }
             
@@ -1221,7 +1220,7 @@ pub fn compile_syn(source: &str) -> Result<Vec<u8>, String> {
         body_opcodes.push(0x0B); // end
         
         // Build locals declaration
-        let num_extra = if emitter.next_local > func.arity { emitter.next_local - func.arity } else { 0 };
+        let num_extra = emitter.next_local.saturating_sub(func.arity);
         let locals_decl = if num_extra > 0 {
             let default_type = if is_f32 { 0x7D } else { 0x7E };
             // Build index-to-name mapping for extra locals

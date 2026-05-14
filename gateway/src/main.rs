@@ -25,7 +25,6 @@ use sha2::{Sha256, Digest};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, IpAddr};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use wasmtime::*;
@@ -213,7 +212,7 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
         use std::io::Write;
         for (i, stream_opt) in caller.data_mut().p2p_streams.iter_mut().enumerate() {
             if let Some(stream) = stream_opt {
-                if let Err(_) = stream.write_all(&buf) {
+                if stream.write_all(&buf).is_err() {
                     failed_streams.push(i);
                 }
             }
@@ -335,7 +334,7 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             if tag == 10 {
                 if a + 16 <= data.len() {
                     let bytes: Vec<u8> = data[a..a+16].to_vec();
-                    let ascii: String = bytes.iter().map(|&b| if b >= 32 && b < 127 { b as char } else { '.' }).collect();
+                    let ascii: String = bytes.iter().map(|&b| if (32..127).contains(&b) { b as char } else { '.' }).collect();
                     let hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
                     eprintln!("[DBG tag=10] ident@{}: ascii=\"{}\" hex={}", addr, ascii, hex);
                 }
@@ -723,7 +722,7 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             let ps = p_ptr as usize;
             let pe = ps + p_len as usize;
             if pe > data.len() { return -1; }
-            let payload = String::from_utf8_lossy(&data[ps..pe]).to_string();
+            let _payload = String::from_utf8_lossy(&data[ps..pe]).to_string();
 
             // MCP Router Scaffold
             // A production environment will parse the JSON-RPC payload 
@@ -887,7 +886,7 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                         pdata[56..64].copy_from_slice(&0i64.to_le_bytes());
                         pdata[64..72].copy_from_slice(&0i64.to_le_bytes());
                     }
-                    result as i64
+                    result
                 }
                 Err(e) => {
                     eprintln!("[compile_and_exec] exec error: {}", e);
@@ -1023,8 +1022,8 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
 
                     // Skip "@f N name" prefix — find the function name end
                     // The function body starts after the name (could be on same line)
-                    let name_end = body.find(|c: char| c == ' ' || c == '\n' || c == '[')
-                        .and_then(|p| body[p+1..].find(|c: char| c == ' ' || c == '\n' || c == '[').map(|q| p + 1 + q))
+                    let name_end = body.find([' ', '\n', '['])
+                        .and_then(|p| body[p+1..].find([' ', '\n', '[']).map(|q| p + 1 + q))
                         .unwrap_or(0);
                     let func_body = &body[name_end..];
 
@@ -1363,7 +1362,7 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                         pdata[56..64].copy_from_slice(&0i64.to_le_bytes());
                         pdata[64..72].copy_from_slice(&0i64.to_le_bytes());
                     }
-                    result as i64
+                    result
                 }
                 Err(e) => {
                     eprintln!("[spawn_wasm] exec error: {:#?}", e);
@@ -1518,13 +1517,8 @@ fn run_worker(
 }
 
 /// Embedded gateway.wasm — compiled into the binary at build time.
-///
-/// In the public OSS repo, `gateway/gateway.wasm` is an 8-byte stub (just the
-/// Wasm magic header `\0asm\1\0\0\0`). The stub lets the binary build cleanly
-/// without the private `.syn`-compiled artifact. At runtime, provide a real
-/// gateway.wasm via the `SYNAPSE_GATEWAY_WASM` env var or as the first CLI arg
-/// (see fn main below).
-static EMBEDDED_GATEWAY_WASM: &[u8] = include_bytes!("../gateway.wasm");
+/// TODO: the actual payload should be generated or provided via a proper release process
+static EMBEDDED_GATEWAY_WASM: &[u8] = include_bytes!("../../../gateway.wasm");
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wasm_override = std::env::args().nth(1)
@@ -1724,6 +1718,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ("/blog/250x-faster", "blog-250x-faster.html"),
             ("/verify", "verify.html"),
             ("/dashboard", "dashboard.html"),
+            ("/myles", "myles.html"),
             ("/docs", "docs.html"),
         ];
         for (route, filename) in &page_map {

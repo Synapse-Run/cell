@@ -1,6 +1,6 @@
 {
   "name": "@runsynapse/sdk",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Synapse Cell SDK \u2014 E2B-compatible sandboxed code execution, 200x faster, with streaming and filesystem support.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

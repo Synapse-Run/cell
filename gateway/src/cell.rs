@@ -802,7 +802,7 @@ impl CellManager {
                 version: "1.0.0".into(),
                 runtime: "python3".into(),
                 description: "CPython 3.x on WASI — default Cell template".into(),
-                author: "Synapse Run".into(),
+                author: "Freshfield AI".into(),
                 packages: vec![],
                 files: vec![],
                 start_command: None,
@@ -818,7 +818,7 @@ impl CellManager {
                 version: "1.0.0".into(),
                 runtime: "javascript".into(),
                 description: "QuickJS on WASI — JavaScript/ES2023 sandbox".into(),
-                author: "Synapse Run".into(),
+                author: "Freshfield AI".into(),
                 packages: vec![],
                 files: vec![],
                 start_command: None,
@@ -834,7 +834,7 @@ impl CellManager {
                 version: "1.0.0".into(),
                 runtime: "synapse".into(),
                 description: ".syn language — verified Wasm execution".into(),
-                author: "Synapse Run".into(),
+                author: "Freshfield AI".into(),
                 packages: vec![],
                 files: vec![],
                 start_command: None,
@@ -973,7 +973,7 @@ impl CellManager {
                 // Filter by event pattern if specified
                 if let Some(filter) = hook["events"].as_array() {
                     let matches = filter.iter().any(|e| {
-                        e.as_str().map_or(false, |s| s == "*" || s == event_type)
+                        e.as_str().is_some_and(|s| s == "*" || s == event_type)
                     });
                     if !matches { continue; }
                 }
@@ -1264,7 +1264,7 @@ impl CellManager {
                 #[cfg(unix)]
                 {
                     use std::os::unix::io::AsRawFd;
-                    if let Err(_) = flock_exclusive(f.as_raw_fd()) {
+                    if flock_exclusive(f.as_raw_fd()).is_err() {
                         return Err(format!("Volume {} is already mounted as read-write by another sandbox.", vid));
                     }
                 }
@@ -1373,7 +1373,7 @@ impl CellManager {
             timeout_ms,
             metadata,
             executions: 0,
-            data_dir: format!("/data/"),
+            data_dir: "/data/".to_string(),
             persistent,
             last_active_ms: Some(now),
             volume_id: volume_id.clone(),
@@ -1455,7 +1455,7 @@ impl CellManager {
         // Skip if this session has been permanently flagged for CPython.
         let syn_disabled = {
             let cells = self.cells.read().map_err(|e| e.to_string())?;
-            cells.get(cell_id).map_or(false, |c| c.syn_disabled)
+            cells.get(cell_id).is_some_and(|c| c.syn_disabled)
         };
 
         if !syn_disabled {
@@ -1574,7 +1574,7 @@ impl CellManager {
     /// Supports: ls, cat, echo, pwd, mkdir, rm, cp, mv, touch, head, tail, wc, env, which, find
     pub fn exec_command(&self, cell_id: &str, command: &str) -> Result<CellExecResult, String> {
         let start = Instant::now();
-        let parts: Vec<&str> = command.trim().split_whitespace().collect();
+        let parts: Vec<&str> = command.split_whitespace().collect();
         if parts.is_empty() {
             return Err("Empty command".into());
         }
@@ -1727,7 +1727,7 @@ impl CellManager {
                     // Fetch package info from PyPI JSON API
                     let pypi_url = format!("https://pypi.org/pypi/{}/json", pkg);
                     let output = std::process::Command::new("curl")
-                        .args(&["-sL", "--max-time", "10", &pypi_url])
+                        .args(["-sL", "--max-time", "10", &pypi_url])
                         .output();
 
                     match output {
@@ -1756,7 +1756,7 @@ impl CellManager {
                                         // Download the wheel
                                         let whl_path = data_path.join(format!("{}.whl", pkg));
                                         let dl = std::process::Command::new("curl")
-                                            .args(&["-sL", "--max-time", "30", "-o"])
+                                            .args(["-sL", "--max-time", "30", "-o"])
                                             .arg(&whl_path)
                                             .arg(url)
                                             .output();
@@ -1765,7 +1765,7 @@ impl CellManager {
                                             Ok(d) if d.status.success() && whl_path.exists() => {
                                                 // Extract the wheel (it's a zip file)
                                                 let unzip = std::process::Command::new("unzip")
-                                                    .args(&["-o", "-q"])
+                                                    .args(["-o", "-q"])
                                                     .arg(&whl_path)
                                                     .arg("-d")
                                                     .arg(&site_packages)
@@ -3349,7 +3349,7 @@ impl CellManager {
             .filter(|info| query.states.iter().any(|s| s == &info.status))
             .filter(|info| {
                 query.metadata.iter().all(|(k, v)|
-                    info.metadata.get(k).map_or(false, |mv| mv == v))
+                    info.metadata.get(k) == Some(v))
             })
             .cloned()
             .collect();
@@ -4097,7 +4097,7 @@ impl CellManager {
                 #[cfg(unix)]
                 {
                     use std::os::unix::io::AsRawFd;
-                    if let Err(_) = flock_exclusive(f.as_raw_fd()) {
+                    if flock_exclusive(f.as_raw_fd()).is_err() {
                         return Err(format!("Volume {} cannot be deleted because it is mounted by an active sandbox.", volume_id));
                     }
                 }

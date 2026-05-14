@@ -956,7 +956,7 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 Err(e) => return (400, format!(r#"{{"error":"Invalid JSON: {}"}}"#, e)),
             };
             let name = body["name"].as_str().unwrap_or("default");
-            let ctx_id = format!("ctx_{}", uuid::Uuid::new_v4().to_string().replace("-", "")[..12].to_string());
+            let ctx_id = format!("ctx_{}", &uuid::Uuid::new_v4().to_string().replace("-", "")[..12]);
 
             // Initialize the context namespace in the persistent session
             let init_code = format!(
@@ -1482,7 +1482,7 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             let result = cell_manager.exec(cell_id, code, None);
 
             // Kill cell immediately (ephemeral)
-            let _ = cell_manager.kill_cell(&cell_id);
+            let _ = cell_manager.kill_cell(cell_id);
 
             match result {
                 Ok(r) => {
@@ -1814,7 +1814,7 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                                         let meta = entry.metadata().ok();
                                         events.push(serde_json::json!({
                                             "name": entry.file_name().to_string_lossy(),
-                                            "type": if meta.as_ref().map_or(false, |m| m.is_dir()) { "dir" } else { "file" },
+                                            "type": if meta.as_ref().is_some_and(|m| m.is_dir()) { "dir" } else { "file" },
                                             "size": meta.as_ref().map_or(0, |m| m.len()),
                                         }));
                                     }
@@ -2008,8 +2008,7 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 Some(u) => u,
                 None => return (400, r#"{"error":"Missing 'url' field"}"#.to_string()),
             };
-            let events = body["events"].as_array()
-                .map(|arr| arr.clone())
+            let events = body["events"].as_array().cloned()
                 .unwrap_or_else(|| vec![serde_json::json!("*")]);
 
             let hooks_path = cell_manager.cells_root.join("__webhooks__.json");
@@ -2291,10 +2290,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                     "os": "Linux (kernel 5.10+) or macOS 13+"
                 },
                 "deployment_methods": [
-                    {"method": "docker", "command": "docker run -p 8002:8002 ghcr.io/synapse-run/cell:latest"},
-                    {"method": "binary", "instruction": "Download from github.com/Synapse-Run/cell/releases"},
+                    {"method": "docker", "command": "docker run -p 8002:8002 ghcr.io/freshfield-ai/synapse-cell:latest"},
+                    {"method": "binary", "instruction": "Download from github.com/Freshfield-AI/synapse/releases"},
                     {"method": "source", "instruction": "cd cell/gateway && cargo build --release"},
-                    {"method": "helm", "instruction": "helm install synapse-cell oci://ghcr.io/synapse-run/charts/cell"}
+                    {"method": "helm", "instruction": "helm install synapse-cell oci://ghcr.io/freshfield-ai/charts/synapse-cell"}
                 ],
                 "license": "AGPL-3.0 + Apache-2.0 dual license",
                 "documentation": "https://docs.synapse.run/deploy"

@@ -464,8 +464,8 @@ impl PyParser {
 
         // Determine block indent level
         let block_indent = if let PyTok::Indent(n) = self.peek() {
-            let n = *n;
-            n
+            
+            *n
         } else {
             // Single-line block
             let stmt = self.parse_stmt(0)?;
@@ -870,7 +870,7 @@ fn emit_typed_expr(t: &mut Transpiler, expr: &PyExpr) -> Result<(String, PyType)
             let (oc, _) = emit_typed_expr(t, orelse)?;
             Ok((format!("if {} [ {} ] [ {} ]", cc, bc, oc), bt))
         }
-        _ => Err(format!("Unsupported expression")),
+        _ => Err("Unsupported expression".to_string()),
     }
 }
 
@@ -1098,11 +1098,10 @@ fn pretrap_unsafe_patterns(source: &str) -> bool {
             for i in 0..bytes.len().saturating_sub(1) {
                 let c = bytes[i];
                 let n = bytes[i + 1];
-                if (c == b'b' || c == b'B') && (n == b'\'' || n == b'"') {
-                    if i == 0 || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_') {
+                if (c == b'b' || c == b'B') && (n == b'\'' || n == b'"')
+                    && (i == 0 || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_')) {
                         return true;
                     }
-                }
             }
         }
 
@@ -1168,11 +1167,10 @@ fn has_string_multiplication(line: &str) -> bool {
             if i > 0 {
                 let mut j = i;
                 while j > 0 && bytes[j - 1] == b' ' { j -= 1; }
-                if j > 0 && bytes[j - 1] == b'*' {
-                    if j < 2 || bytes[j - 2] != b'*' {
+                if j > 0 && bytes[j - 1] == b'*'
+                    && (j < 2 || bytes[j - 2] != b'*') {
                         return true;
                     }
-                }
             }
         }
     }
