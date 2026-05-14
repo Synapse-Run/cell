@@ -9,10 +9,10 @@ mod cell;
 mod cell_api;
 mod compiler;
 mod inference;
+pub mod license;
 mod transpiler;
 mod util;
 mod ws_api;
-pub mod license;
 
 #[pyclass]
 struct NativeCell {
@@ -27,8 +27,14 @@ impl NativeCell {
         let template_dir_pb = PathBuf::from(&template_dir);
         let cert_env = std::env::var("SYNAPSE_LICENSE_CERT").ok();
         let license_status = license::validate_license(cert_env);
-        let mgr_res = cell::CellManager::new(PathBuf::from(cells_root), template_dir_pb.clone(), license_status);
-        let manager = std::sync::Arc::new(mgr_res.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?);
+        let mgr_res = cell::CellManager::new(
+            PathBuf::from(cells_root),
+            template_dir_pb.clone(),
+            license_status,
+        );
+        let manager = std::sync::Arc::new(
+            mgr_res.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?,
+        );
 
         // Sprint C: Load pre-compiled Wasm runtime binaries from template_dir
         // so PyO3 local mode can execute real CPython/QuickJS when the .syn
@@ -48,7 +54,14 @@ impl NativeCell {
         // Disable reaping when initialized directly by the Python process to tie its lifecycle to Python
         // manager.start_reaper();
 
-        let info = manager.create_cell(&template, 300_000, std::collections::HashMap::new(), std::collections::HashMap::new(), None)
+        let info = manager
+            .create_cell(
+                &template,
+                300_000,
+                std::collections::HashMap::new(),
+                std::collections::HashMap::new(),
+                None,
+            )
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
 
         Ok(NativeCell {
@@ -63,10 +76,9 @@ impl NativeCell {
     }
 
     fn get_info(&self, py: Python<'_>) -> PyResult<PyObject> {
-        let info = self.manager.get_cell(&self.cell_id)
-            .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err(
-                format!("cell not found: {}", self.cell_id)
-            ))?;
+        let info = self.manager.get_cell(&self.cell_id).ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!("cell not found: {}", self.cell_id))
+        })?;
         // Use the E2B-shaped view already on CellInfo (landed in commit 26551b7).
         let json = serde_json::to_string(&info.to_sandbox_info_json())
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
@@ -77,8 +89,24 @@ impl NativeCell {
         Ok(loads.call1((json,))?.into())
     }
 
-    fn run(&self, code: String) -> PyResult<(String, String, i32, f64, String, String, String, String, u64, String)> {
-        let result = self.manager.exec_persistent(&self.cell_id, &code, None)
+    fn run(
+        &self,
+        code: String,
+    ) -> PyResult<(
+        String,
+        String,
+        i32,
+        f64,
+        String,
+        String,
+        String,
+        String,
+        u64,
+        String,
+    )> {
+        let result = self
+            .manager
+            .exec_persistent(&self.cell_id, &code, None)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
 
         // JC-014 (2026-04-28): Receipt fields plumbed through PyO3 so free-tier

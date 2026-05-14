@@ -13,11 +13,14 @@
 //! Persistent sessions serialize Python globals via pickle between exec() calls,
 //! enabling stateful multi-step agent workflows at 67×+ faster than E2B.
 
-use sha2::{Sha256, Digest};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, RwLock,
+};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 use wasmtime::*;
@@ -60,8 +63,8 @@ fn synapse_infer_host_fn(
         }
     };
 
-    let completion = crate::inference::infer_prompt(&prompt)
-        .unwrap_or_else(|err| format!("Error: {}", err));
+    let completion =
+        crate::inference::infer_prompt(&prompt).unwrap_or_else(|err| format!("Error: {}", err));
     let comp_bytes = completion.as_bytes();
     let write_len = std::cmp::min(comp_bytes.len(), out_max_len as usize);
 
@@ -113,7 +116,7 @@ pub struct CellInfo {
     pub cell_id: String,
     pub template: String,
     pub status: CellStatus,
-    pub created_at: u64,  // Unix timestamp ms
+    pub created_at: u64, // Unix timestamp ms
     pub timeout_ms: u64,
     pub metadata: HashMap<String, String>,
     pub executions: u64,
@@ -211,7 +214,10 @@ impl CellInfo {
         let m = if mp < 10 { mp + 3 } else { mp - 9 };
         let y = if m <= 2 { y + 1 } else { y };
 
-        format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, hours, minutes, seconds)
+        format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+            y, m, d, hours, minutes, seconds
+        )
     }
 }
 
@@ -223,31 +229,32 @@ impl CellInfo {
 pub struct FileEntryInfo {
     pub name: String,
     #[serde(rename = "type")]
-    pub entry_type: String,     // "file" or "dir"
-    pub path: String,           // relative to /data/
+    pub entry_type: String, // "file" or "dir"
+    pub path: String, // relative to /data/
     pub size: u64,
     pub mode: u32,
-    pub permissions: String,    // "rwxr-xr-x" format
-    pub owner: String,          // always "sandbox" (Cell has no per-user ownership)
-    pub group: String,          // always "sandbox"
-    pub modified_time: String,  // ISO 8601 UTC
+    pub permissions: String,   // "rwxr-xr-x" format
+    pub owner: String,         // always "sandbox" (Cell has no per-user ownership)
+    pub group: String,         // always "sandbox"
+    pub modified_time: String, // ISO 8601 UTC
 }
 
 /// Build a FileEntryInfo from filesystem metadata.
 /// `full_path` is the absolute path on disk; `base_path` is the cell's data directory.
 /// The returned `path` field is relative to base_path (what the SDK sees as "/data/...").
 fn metadata_to_entry_info(full_path: &Path, base_path: &Path) -> Result<FileEntryInfo, String> {
-    let meta = std::fs::metadata(full_path)
-        .map_err(|e| format!("Failed to stat: {}", e))?;
+    let meta = std::fs::metadata(full_path).map_err(|e| format!("Failed to stat: {}", e))?;
 
-    let name = full_path.file_name()
+    let name = full_path
+        .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
 
     let entry_type = if meta.is_dir() { "dir" } else { "file" };
 
     // Relative path from base_path
-    let rel_path = full_path.strip_prefix(base_path)
+    let rel_path = full_path
+        .strip_prefix(base_path)
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
@@ -260,13 +267,18 @@ fn metadata_to_entry_info(full_path: &Path, base_path: &Path) -> Result<FileEntr
         meta.permissions().mode()
     };
     #[cfg(not(unix))]
-    let mode: u32 = if meta.permissions().readonly() { 0o444 } else { 0o644 };
+    let mode: u32 = if meta.permissions().readonly() {
+        0o444
+    } else {
+        0o644
+    };
 
     // Format permissions string like "rwxr-xr-x"
     let permissions = format_permissions(mode);
 
     // Modified time as ISO 8601 — reuses CellInfo::ms_to_iso8601 via millis conversion
-    let modified_time = meta.modified()
+    let modified_time = meta
+        .modified()
         .map(|t| {
             let duration = t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
             let ms = duration.as_millis() as u64;
@@ -335,9 +347,15 @@ pub struct TemplateInfo {
     pub tags: HashMap<String, String>,
 }
 
-fn default_version() -> String { "1.0.0".into() }
-fn default_user() -> String { "sandbox".into() }
-fn default_working_dir() -> String { "/data".into() }
+fn default_version() -> String {
+    "1.0.0".into()
+}
+fn default_user() -> String {
+    "sandbox".into()
+}
+fn default_working_dir() -> String {
+    "/data".into()
+}
 
 // ─── Cell Creation Options ─────────────────────────────────────────
 
@@ -382,16 +400,18 @@ pub struct ListQuery {
 }
 
 pub(crate) fn encode_next_token(created_at: u64, cell_id: &str) -> String {
-    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     URL_SAFE_NO_PAD.encode(format!("{}:{}", created_at, cell_id))
 }
 
 pub(crate) fn decode_next_token(token: &str) -> Result<(u64, String), String> {
-    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     let bytes = URL_SAFE_NO_PAD.decode(token).map_err(|e| e.to_string())?;
     let s = std::str::from_utf8(&bytes).map_err(|e| e.to_string())?;
     let (ca, id) = s.split_once(':').ok_or("malformed token: no ':'")?;
-    let ca: u64 = ca.parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
+    let ca: u64 = ca
+        .parse()
+        .map_err(|e: std::num::ParseIntError| e.to_string())?;
     Ok((ca, id.to_string()))
 }
 
@@ -568,7 +588,10 @@ impl UsageMetrics {
         let mut current_min = self.latency_min_us.load(Ordering::Relaxed);
         while latency_us < current_min {
             match self.latency_min_us.compare_exchange_weak(
-                current_min, latency_us, Ordering::Relaxed, Ordering::Relaxed
+                current_min,
+                latency_us,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
             ) {
                 Ok(_) => break,
                 Err(actual) => current_min = actual,
@@ -579,7 +602,10 @@ impl UsageMetrics {
         let mut current_max = self.latency_max_us.load(Ordering::Relaxed);
         while latency_us > current_max {
             match self.latency_max_us.compare_exchange_weak(
-                current_max, latency_us, Ordering::Relaxed, Ordering::Relaxed
+                current_max,
+                latency_us,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
             ) {
                 Ok(_) => break,
                 Err(actual) => current_max = actual,
@@ -626,8 +652,16 @@ impl UsageMetrics {
             py_executions: self.py_executions.load(Ordering::Relaxed),
             syn_executions: self.syn_executions.load(Ordering::Relaxed),
             demo_executions: self.demo_executions.load(Ordering::Relaxed),
-            avg_latency_ms: if total > 0 { (sum_us as f64 / total as f64) / 1000.0 } else { 0.0 },
-            min_latency_ms: if min_us == u64::MAX { 0.0 } else { min_us as f64 / 1000.0 },
+            avg_latency_ms: if total > 0 {
+                (sum_us as f64 / total as f64) / 1000.0
+            } else {
+                0.0
+            },
+            min_latency_ms: if min_us == u64::MAX {
+                0.0
+            } else {
+                min_us as f64 / 1000.0
+            },
             max_latency_ms: max_us as f64 / 1000.0,
             uptime_seconds: (now - self.started_at) / 1000,
             started_at: self.started_at,
@@ -765,15 +799,19 @@ pub struct CellManager {
 impl CellManager {
     /// Create a new CellManager with the given root directory for cell data.
     /// Spawns a background reaper thread to clean up idle persistent sessions.
-    pub fn new(cells_root: PathBuf, template_dir: PathBuf, license_status: crate::license::LicenseStatus) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        cells_root: PathBuf,
+        template_dir: PathBuf,
+        license_status: crate::license::LicenseStatus,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         // Ensure root directory exists
         std::fs::create_dir_all(&cells_root)?;
         // Create engine optimized for compute-heavy WASM workloads
         // SIMD enabled for vectorized operations, fuel for per-store DoS protection
         let mut config = Config::new();
         config.cranelift_opt_level(OptLevel::Speed);
-        config.consume_fuel(true);              // Per-store fuel metering (concurrent-safe)
-        config.wasm_simd(true);                 // Enable SIMD for vectorized operations
+        config.consume_fuel(true); // Per-store fuel metering (concurrent-safe)
+        config.wasm_simd(true); // Enable SIMD for vectorized operations
         config.wasm_component_model(false);
         let engine = Engine::new(&config)?;
 
@@ -863,7 +901,9 @@ impl CellManager {
         std::thread::Builder::new()
             .name("cell-reaper".into())
             .spawn(move || {
-                if std::env::var("CELL_VERBOSE").is_ok() { eprintln!("[.cell] Reaper thread started (30s interval, auto-pause enabled)"); }
+                if std::env::var("CELL_VERBOSE").is_ok() {
+                    eprintln!("[.cell] Reaper thread started (30s interval, auto-pause enabled)");
+                }
                 loop {
                     std::thread::sleep(std::time::Duration::from_secs(30));
                     let now = SystemTime::now()
@@ -930,7 +970,8 @@ impl CellManager {
         // Write to per-cell event log
         if let Some(data_path) = self.get_cell_data_path(cell_id) {
             if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true).append(true)
+                .create(true)
+                .append(true)
                 .open(data_path.join("__lifecycle_events__.jsonl"))
             {
                 use std::io::Write;
@@ -940,7 +981,8 @@ impl CellManager {
         // Also write to the global event stream
         let global_log = self.cells_root.join("__global_events__.jsonl");
         if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true).append(true)
+            .create(true)
+            .append(true)
             .open(&global_log)
         {
             use std::io::Write;
@@ -951,7 +993,9 @@ impl CellManager {
     /// Deliver webhooks for a lifecycle event.
     pub fn deliver_webhooks(&self, cell_id: &str, event_type: &str) {
         let hooks_path = self.cells_root.join("__webhooks__.json");
-        if !hooks_path.exists() { return; }
+        if !hooks_path.exists() {
+            return;
+        }
         let hooks_data = match std::fs::read_to_string(&hooks_path) {
             Ok(d) => d,
             Err(_) => return,
@@ -972,10 +1016,12 @@ impl CellManager {
             if let Some(url) = hook["url"].as_str() {
                 // Filter by event pattern if specified
                 if let Some(filter) = hook["events"].as_array() {
-                    let matches = filter.iter().any(|e| {
-                        e.as_str().is_some_and(|s| s == "*" || s == event_type)
-                    });
-                    if !matches { continue; }
+                    let matches = filter
+                        .iter()
+                        .any(|e| e.as_str().is_some_and(|s| s == "*" || s == event_type));
+                    if !matches {
+                        continue;
+                    }
                 }
                 // Best-effort delivery via thread
                 let url = url.to_string();
@@ -986,12 +1032,20 @@ impl CellManager {
                         let (hostport, path_part) = rest.split_once('/').unwrap_or((rest, ""));
                         let (host, port) = if hostport.contains(':') {
                             let parts: Vec<&str> = hostport.splitn(2, ':').collect();
-                            (parts[0], parts.get(1).and_then(|p| p.parse::<u16>().ok()).unwrap_or(80))
+                            (
+                                parts[0],
+                                parts
+                                    .get(1)
+                                    .and_then(|p| p.parse::<u16>().ok())
+                                    .unwrap_or(80),
+                            )
                         } else {
                             (hostport, 80u16)
                         };
                         let path = format!("/{}", path_part);
-                        if let Ok(mut stream) = std::net::TcpStream::connect(format!("{}:{}", host, port)) {
+                        if let Ok(mut stream) =
+                            std::net::TcpStream::connect(format!("{}:{}", host, port))
+                        {
                             use std::io::Write;
                             let req = format!(
                                 "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -1015,16 +1069,22 @@ impl CellManager {
         let wasm_size = wasm_bytes.len();
         let verbose = std::env::var("CELL_VERBOSE").is_ok();
         if verbose {
-            eprintln!("[.cell] Compiling template: {} ({} bytes)...", name, wasm_size);
+            eprintln!(
+                "[.cell] Compiling template: {} ({} bytes)...",
+                name, wasm_size
+            );
         }
         let start = std::time::Instant::now();
         let module = Module::new(&self.engine, &wasm_bytes)
             .map_err(|e| format!("Failed to compile template {}: {}", name, e))?;
         let compile_ms = start.elapsed().as_secs_f64() * 1000.0;
         if verbose {
-            eprintln!("[.cell] ✓ Template {} compiled in {:.0}ms", name, compile_ms);
+            eprintln!(
+                "[.cell] ✓ Template {} compiled in {:.0}ms",
+                name, compile_ms
+            );
         }
-        
+
         let mut templates = self.compiled_templates.write().map_err(|e| e.to_string())?;
         templates.insert(name.to_string(), module);
         Ok(())
@@ -1040,7 +1100,7 @@ impl CellManager {
         wasm_bytes: Option<Vec<u8>>,
     ) -> Result<TemplateInfo, String> {
         if !self.license_status.is_pro() {
-             return Err("Custom templates require a valid commercial license (Enterprise/Pro/Scale). The free EdgeCell tier supports built-in templates only (e.g. python3). Please upgrade to unlock this feature.".into());
+            return Err("Custom templates require a valid commercial license (Enterprise/Pro/Scale). The free EdgeCell tier supports built-in templates only (e.g. python3). Please upgrade to unlock this feature.".into());
         }
 
         let name = info.name.clone();
@@ -1057,7 +1117,9 @@ impl CellManager {
 
         let mut stored = info;
         stored.registered_at = now;
-        stored.compiled = self.compiled_templates.read()
+        stored.compiled = self
+            .compiled_templates
+            .read()
             .map(|t| t.contains_key(&name))
             .unwrap_or(false);
 
@@ -1077,7 +1139,10 @@ impl CellManager {
 
     /// List all registered templates.
     pub fn list_templates(&self) -> Vec<TemplateInfo> {
-        let reg = self.template_registry.read().unwrap_or_else(|e| e.into_inner());
+        let reg = self
+            .template_registry
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         reg.values().cloned().collect()
     }
 
@@ -1094,17 +1159,32 @@ impl CellManager {
         patch: serde_json::Value,
     ) -> Result<TemplateInfo, String> {
         let mut reg = self.template_registry.write().map_err(|e| e.to_string())?;
-        let info = reg.get_mut(name)
+        let info = reg
+            .get_mut(name)
             .ok_or_else(|| format!("Template not found: {}", name))?;
 
         // Merge non-null fields
-        if let Some(v) = patch["version"].as_str() { info.version = v.to_string(); }
-        if let Some(d) = patch["description"].as_str() { info.description = d.to_string(); }
-        if let Some(a) = patch["author"].as_str() { info.author = a.to_string(); }
-        if let Some(sc) = patch["start_command"].as_str() { info.start_command = Some(sc.to_string()); }
-        if let Some(rc) = patch["ready_command"].as_str() { info.ready_command = Some(rc.to_string()); }
-        if let Some(u) = patch["user"].as_str() { info.user = u.to_string(); }
-        if let Some(wd) = patch["working_directory"].as_str() { info.working_directory = wd.to_string(); }
+        if let Some(v) = patch["version"].as_str() {
+            info.version = v.to_string();
+        }
+        if let Some(d) = patch["description"].as_str() {
+            info.description = d.to_string();
+        }
+        if let Some(a) = patch["author"].as_str() {
+            info.author = a.to_string();
+        }
+        if let Some(sc) = patch["start_command"].as_str() {
+            info.start_command = Some(sc.to_string());
+        }
+        if let Some(rc) = patch["ready_command"].as_str() {
+            info.ready_command = Some(rc.to_string());
+        }
+        if let Some(u) = patch["user"].as_str() {
+            info.user = u.to_string();
+        }
+        if let Some(wd) = patch["working_directory"].as_str() {
+            info.working_directory = wd.to_string();
+        }
         // Merge tags (add/overwrite, never remove existing)
         if let Some(tags_obj) = patch["tags"].as_object() {
             for (k, v) in tags_obj {
@@ -1197,10 +1277,7 @@ impl CellManager {
     /// Create a cell with the full E2B-equivalent parameter set.
     /// This is the canonical entry point; create_cell/create_persistent_cell
     /// are convenience wrappers with None defaults for new fields.
-    pub fn create_cell_opts(
-        &self,
-        opts: CreateCellOptions,
-    ) -> Result<CellInfo, String> {
+    pub fn create_cell_opts(&self, opts: CreateCellOptions) -> Result<CellInfo, String> {
         let template_name = &opts.template;
         let timeout_ms = opts.timeout_ms;
         let metadata = opts.metadata;
@@ -1214,14 +1291,20 @@ impl CellManager {
 
         // --- License Enforcement (EdgeCell graceful degradation) ---
         if persistent && !self.license_status.is_pro() {
-             return Err("Persistent sessions require a valid commercial license (Pro/Scale/Enterprise). You are currently running the free EdgeCell tier. Please upgrade to unlock this feature.".into());
+            return Err("Persistent sessions require a valid commercial license (Pro/Scale/Enterprise). You are currently running the free EdgeCell tier. Please upgrade to unlock this feature.".into());
         }
-        
-        let num_active = self.cells.read()
-            .map(|c| c.values().filter(|cell| cell.info.status != CellStatus::Killed).count())
+
+        let num_active = self
+            .cells
+            .read()
+            .map(|c| {
+                c.values()
+                    .filter(|cell| cell.info.status != CellStatus::Killed)
+                    .count()
+            })
             .unwrap_or(0);
         if num_active >= 10 && !self.license_status.is_pro() {
-             return Err("The free EdgeCell tier is limited to 10 concurrent sandboxes. Please upgrade your license to unlock higher concurrency.".into());
+            return Err("The free EdgeCell tier is limited to 10 concurrent sandboxes. Please upgrade your license to unlock higher concurrency.".into());
         }
         // -----------------------------------------------------------
 
@@ -1229,16 +1312,19 @@ impl CellManager {
         let template = CellTemplate::from_str(template_name)
             .or_else(|| {
                 // Check custom registry — if found, map to the base runtime
-                self.get_template_info(template_name).and_then(|info| {
-                    CellTemplate::from_str(&info.runtime)
-                })
+                self.get_template_info(template_name)
+                    .and_then(|info| CellTemplate::from_str(&info.runtime))
             })
             .ok_or_else(|| format!("Unknown template: {}", template_name))?;
 
         let cell_id = Uuid::new_v4().to_string();
 
         let data_path = if let Some(ref vid) = volume_id {
-            self.cells_root.parent().unwrap_or(&self.cells_root).join("volumes").join(vid)
+            self.cells_root
+                .parent()
+                .unwrap_or(&self.cells_root)
+                .join("volumes")
+                .join(vid)
         } else {
             self.cells_root.join(&cell_id).join("data")
         };
@@ -1249,9 +1335,15 @@ impl CellManager {
         let mut volume_locks = Vec::new();
         for m in &volume_mounts {
             if let Some(vid) = m.get("volume_id").and_then(|v| v.as_str()) {
-                let vol_path = self.cells_root.parent().unwrap_or(&self.cells_root).join("volumes").join(vid);
-                std::fs::create_dir_all(&vol_path).map_err(|e| format!("Failed to verify volume {}: {}", vid, e))?;
-                
+                let vol_path = self
+                    .cells_root
+                    .parent()
+                    .unwrap_or(&self.cells_root)
+                    .join("volumes")
+                    .join(vid);
+                std::fs::create_dir_all(&vol_path)
+                    .map_err(|e| format!("Failed to verify volume {}: {}", vid, e))?;
+
                 let lock_file_path = vol_path.join(".synapse_volume.lock");
                 let f = std::fs::OpenOptions::new()
                     .read(true)
@@ -1259,74 +1351,104 @@ impl CellManager {
                     .create(true)
                     .open(&lock_file_path)
                     .map_err(|e| format!("Could not open volume lock file: {}", e))?;
-                
+
                 // Mount lock: exclusive Non-Blocking
                 #[cfg(unix)]
                 {
                     use std::os::unix::io::AsRawFd;
                     if flock_exclusive(f.as_raw_fd()).is_err() {
-                        return Err(format!("Volume {} is already mounted as read-write by another sandbox.", vid));
+                        return Err(format!(
+                            "Volume {} is already mounted as read-write by another sandbox.",
+                            vid
+                        ));
                     }
                 }
-                
+
                 volume_locks.push(Arc::new(f));
             }
         }
-
 
         // For persistent Python sessions, write the harness script and spawn the live worker
         if persistent && matches!(template, CellTemplate::Python3) {
             let harness_path = data_path.join("__harness__.py");
             std::fs::write(&harness_path, PERSISTENT_HARNESS_PY)
                 .map_err(|e| format!("Failed to write persistent harness: {}", e))?;
-            if std::env::var("CELL_VERBOSE").is_ok() { eprintln!("[.cell] Persistent session created: {} (template: {})", &cell_id[..8], template_name); }
-            
+            if std::env::var("CELL_VERBOSE").is_ok() {
+                eprintln!(
+                    "[.cell] Persistent session created: {} (template: {})",
+                    &cell_id[..8],
+                    template_name
+                );
+            }
+
             // Clone primitives for the background thread
             let engine = self.engine.clone();
             let module = {
                 let templates = self.compiled_templates.read().map_err(|e| e.to_string())?;
-                templates.get("python3").cloned().unwrap_or_else(|| panic!("python3 template missing"))
+                templates
+                    .get("python3")
+                    .cloned()
+                    .unwrap_or_else(|| panic!("python3 template missing"))
             };
             let dp = data_path.clone();
             let lib_path = self.template_dir.join("lib");
             let cid = cell_id.clone();
             // Sprint C Phase C2: resolve template-specific package directories
-            let extra_lib_paths: Vec<PathBuf> = self.get_template_info(template_name)
+            let extra_lib_paths: Vec<PathBuf> = self
+                .get_template_info(template_name)
                 .map(|info| {
-                    info.packages.iter()
+                    info.packages
+                        .iter()
                         .filter_map(|pkg| {
                             let pkg_name = pkg.split("==").next().unwrap_or(pkg).trim();
                             let pkg_dir = self.templates_root.join("packages").join(pkg_name);
-                            if pkg_dir.exists() { Some(pkg_dir) } else { None }
+                            if pkg_dir.exists() {
+                                Some(pkg_dir)
+                            } else {
+                                None
+                            }
                         })
                         .collect()
                 })
                 .unwrap_or_default();
-            
+
             // Spawn the Holy Grail Background Worker
             std::thread::Builder::new()
                 .name(format!("wasm-{}", &cell_id[..8]))
                 .spawn(move || {
-                    if std::env::var("CELL_VERBOSE").is_ok() { eprintln!("[.cell] Live worker started for {}", &cid[..8]); }
+                    if std::env::var("CELL_VERBOSE").is_ok() {
+                        eprintln!("[.cell] Live worker started for {}", &cid[..8]);
+                    }
                     let mut wasi_builder = wasmtime_wasi::WasiCtxBuilder::new();
-                    
+
                     let stdout_pipe = wasmtime_wasi::p2::pipe::MemoryOutputPipe::new(1024 * 1024);
                     let stderr_pipe = wasmtime_wasi::p2::pipe::MemoryOutputPipe::new(1024 * 1024);
                     wasi_builder.stdout(stdout_pipe);
                     wasi_builder.stderr(stderr_pipe);
-                    
+
                     // wasmtime-wasi v22+ removed Dir + ambient_authority — preopened_dir
                     // now takes a path directly.  See JC-002 for the v18→v43 migration notes.
-                    let _ = wasi_builder.preopened_dir(&dp, "/data", wasmtime_wasi::DirPerms::all(), wasmtime_wasi::FilePerms::all());
+                    let _ = wasi_builder.preopened_dir(
+                        &dp,
+                        "/data",
+                        wasmtime_wasi::DirPerms::all(),
+                        wasmtime_wasi::FilePerms::all(),
+                    );
                     if lib_path.exists() {
-                        let _ = wasi_builder.preopened_dir(&lib_path, "/lib", wasmtime_wasi::DirPerms::READ, wasmtime_wasi::FilePerms::READ);
+                        let _ = wasi_builder.preopened_dir(
+                            &lib_path,
+                            "/lib",
+                            wasmtime_wasi::DirPerms::READ,
+                            wasmtime_wasi::FilePerms::READ,
+                        );
                     }
                     // Sprint C Phase C2: mount template-specific package dirs
                     for pkg_path in &extra_lib_paths {
                         if let Some(pkg_name) = pkg_path.file_name().and_then(|n| n.to_str()) {
                             let mount_point = format!("/lib/{}", pkg_name);
                             let _ = wasi_builder.preopened_dir(
-                                pkg_path, &mount_point,
+                                pkg_path,
+                                &mount_point,
                                 wasmtime_wasi::DirPerms::READ,
                                 wasmtime_wasi::FilePerms::READ,
                             );
@@ -1343,21 +1465,24 @@ impl CellManager {
                     // wasmtime-wasi v43: WasiP1Ctx and add_to_linker_sync moved to the p1:: namespace
                     let mut linker = Linker::<wasmtime_wasi::p1::WasiP1Ctx>::new(&engine);
                     wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |ctx| ctx).unwrap();
-                    
+
                     // The Cognitive Sandbox: Inject absolute zero-latency Moonshot bindings
-                    linker.func_wrap(
-                        "env",
-                        "synapse_infer",
-                        synapse_infer_host_fn,
-                    ).unwrap();
-                    
+                    linker
+                        .func_wrap("env", "synapse_infer", synapse_infer_host_fn)
+                        .unwrap();
+
                     if let Ok(instance) = linker.instantiate(&mut store, &module) {
-                        if let Ok(start_fn) = instance.get_typed_func::<(), ()>(&mut store, "_start") {
+                        if let Ok(start_fn) =
+                            instance.get_typed_func::<(), ()>(&mut store, "_start")
+                        {
                             let _ = start_fn.call(&mut store, ());
                         }
                     }
-                    if std::env::var("CELL_VERBOSE").is_ok() { eprintln!("[.cell] Live worker exited for {}", &cid[..8]); }
-                }).map_err(|e| format!("Failed to spawn worker worker: {}", e))?;
+                    if std::env::var("CELL_VERBOSE").is_ok() {
+                        eprintln!("[.cell] Live worker exited for {}", &cid[..8]);
+                    }
+                })
+                .map_err(|e| format!("Failed to spawn worker worker: {}", e))?;
         }
 
         let now = SystemTime::now()
@@ -1417,16 +1542,25 @@ impl CellManager {
     /// Execute code in a persistent session.
     /// Loads previous Python namespace from pickle, runs code, saves namespace back.
     /// This is the core of E2B displacement — stateful multi-step execution at 67×+ speed.
-    pub fn exec_persistent(&self, cell_id: &str, code: &str, language: Option<&str>) -> Result<CellExecResult, String> {
+    pub fn exec_persistent(
+        &self,
+        cell_id: &str,
+        code: &str,
+        language: Option<&str>,
+    ) -> Result<CellExecResult, String> {
         let start = Instant::now();
 
         // Look up cell and verify it's persistent
         let (data_path, template_name, is_persistent) = {
             let mut cells = self.cells.write().map_err(|e| e.to_string())?;
-            let cell = cells.get_mut(cell_id)
+            let cell = cells
+                .get_mut(cell_id)
                 .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
             if cell.info.status != CellStatus::Running {
-                return Err(format!("Cell {} is not running (status: {:?})", cell_id, cell.info.status));
+                return Err(format!(
+                    "Cell {} is not running (status: {:?})",
+                    cell_id, cell.info.status
+                ));
             }
             cell.info.executions += 1;
             let now = SystemTime::now()
@@ -1434,7 +1568,11 @@ impl CellManager {
                 .unwrap_or_default()
                 .as_millis() as u64;
             cell.info.last_active_ms = Some(now);
-            (cell.data_path.clone(), cell.info.template.clone(), cell.info.persistent)
+            (
+                cell.data_path.clone(),
+                cell.info.template.clone(),
+                cell.info.persistent,
+            )
         };
 
         if !is_persistent {
@@ -1542,7 +1680,8 @@ impl CellManager {
                 "stderr_len": stderr.len(),
             });
             if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true).append(true)
+                .create(true)
+                .append(true)
                 .open(data_path.join("__exec_log__.jsonl"))
             {
                 use std::io::Write;
@@ -1558,10 +1697,12 @@ impl CellManager {
             })
         } else {
             // Worker died or timed out
-            let receipt = ExecutionReceipt::new(code, "", "Worker execution timeout", effective_template);
+            let receipt =
+                ExecutionReceipt::new(code, "", "Worker execution timeout", effective_template);
             Ok(CellExecResult {
                 stdout: String::new(),
-                stderr: "Worker execution timeout or crash. Check if the cell hit limits.".to_string(),
+                stderr: "Worker execution timeout or crash. Check if the cell hit limits."
+                    .to_string(),
                 exit_code: 1,
                 latency_ms: latency,
                 receipt,
@@ -1582,23 +1723,34 @@ impl CellManager {
         let python_code = match parts[0] {
             "ls" => {
                 let path = parts.get(1).unwrap_or(&"/data");
-                let show_details = parts.contains(&"-l") || parts.contains(&"-la") || parts.contains(&"-al");
+                let show_details =
+                    parts.contains(&"-l") || parts.contains(&"-la") || parts.contains(&"-al");
                 if show_details {
                     let clean_path = path.trim_start_matches('-');
-                    let p = if clean_path.is_empty() { "/data" } else { clean_path };
+                    let p = if clean_path.is_empty() {
+                        "/data"
+                    } else {
+                        clean_path
+                    };
                     format!(
                         "import os, time\npath = '{}'\nfor f in sorted(os.listdir(path)):\n    fp = os.path.join(path, f)\n    st = os.stat(fp)\n    kind = 'd' if os.path.isdir(fp) else '-'\n    print(f'{{kind}}rw-r--r-- {{st.st_size:>8}} {{f}}')",
                         p
                     )
                 } else {
-                    format!("import os\nprint('\\n'.join(sorted(os.listdir('{}'))))", path)
+                    format!(
+                        "import os\nprint('\\n'.join(sorted(os.listdir('{}'))))",
+                        path
+                    )
                 }
             }
             "cat" => {
                 if parts.len() < 2 {
                     return Err("cat requires a file path".into());
                 }
-                format!("with open('{}') as f:\n    print(f.read(), end='')", parts[1])
+                format!(
+                    "with open('{}') as f:\n    print(f.read(), end='')",
+                    parts[1]
+                )
             }
             "echo" => {
                 let text = parts[1..].join(" ");
@@ -1611,53 +1763,92 @@ impl CellManager {
                 }
                 let flag_p = parts.contains(&"-p");
                 if flag_p {
-                    let path = parts.iter().find(|p| !p.starts_with('-') && **p != "mkdir").unwrap_or(&"/data/new");
-                    format!("import os\nos.makedirs('{}', exist_ok=True)\nprint('Created: {}')", path, path)
+                    let path = parts
+                        .iter()
+                        .find(|p| !p.starts_with('-') && **p != "mkdir")
+                        .unwrap_or(&"/data/new");
+                    format!(
+                        "import os\nos.makedirs('{}', exist_ok=True)\nprint('Created: {}')",
+                        path, path
+                    )
                 } else {
-                    format!("import os\nos.makedirs('{}', exist_ok=True)\nprint('Created: {}')", parts[1], parts[1])
+                    format!(
+                        "import os\nos.makedirs('{}', exist_ok=True)\nprint('Created: {}')",
+                        parts[1], parts[1]
+                    )
                 }
             }
             "rm" => {
                 if parts.len() < 2 {
                     return Err("rm requires a path".into());
                 }
-                let recursive = parts.contains(&"-r") || parts.contains(&"-rf") || parts.contains(&"-fr");
-                let path = parts.iter().find(|p| !p.starts_with('-') && **p != "rm").unwrap_or(&"");
+                let recursive =
+                    parts.contains(&"-r") || parts.contains(&"-rf") || parts.contains(&"-fr");
+                let path = parts
+                    .iter()
+                    .find(|p| !p.starts_with('-') && **p != "rm")
+                    .unwrap_or(&"");
                 if recursive {
                     format!("import shutil, os\npath = '{}'\nif os.path.isdir(path):\n    shutil.rmtree(path)\n    print(f'Removed directory: {{path}}')\nelse:\n    os.remove(path)\n    print(f'Removed: {{path}}')", path)
                 } else {
-                    format!("import os\nos.remove('{}')\nprint('Removed: {}')", path, path)
+                    format!(
+                        "import os\nos.remove('{}')\nprint('Removed: {}')",
+                        path, path
+                    )
                 }
             }
             "cp" => {
                 if parts.len() < 3 {
                     return Err("cp requires source and destination".into());
                 }
-                format!("import shutil\nshutil.copy2('{}', '{}')\nprint('Copied: {} -> {}')", parts[1], parts[2], parts[1], parts[2])
+                format!(
+                    "import shutil\nshutil.copy2('{}', '{}')\nprint('Copied: {} -> {}')",
+                    parts[1], parts[2], parts[1], parts[2]
+                )
             }
             "mv" => {
                 if parts.len() < 3 {
                     return Err("mv requires source and destination".into());
                 }
-                format!("import shutil\nshutil.move('{}', '{}')\nprint('Moved: {} -> {}')", parts[1], parts[2], parts[1], parts[2])
+                format!(
+                    "import shutil\nshutil.move('{}', '{}')\nprint('Moved: {} -> {}')",
+                    parts[1], parts[2], parts[1], parts[2]
+                )
             }
             "touch" => {
                 if parts.len() < 2 {
                     return Err("touch requires a file path".into());
                 }
-                format!("open('{}', 'a').close()\nprint('Touched: {}')", parts[1], parts[1])
+                format!(
+                    "open('{}', 'a').close()\nprint('Touched: {}')",
+                    parts[1], parts[1]
+                )
             }
             "head" => {
                 let n = if parts.contains(&"-n") {
-                    parts.iter().position(|p| *p == "-n").and_then(|i| parts.get(i+1)).and_then(|s| s.parse::<usize>().ok()).unwrap_or(10)
-                } else { 10 };
+                    parts
+                        .iter()
+                        .position(|p| *p == "-n")
+                        .and_then(|i| parts.get(i + 1))
+                        .and_then(|s| s.parse::<usize>().ok())
+                        .unwrap_or(10)
+                } else {
+                    10
+                };
                 let path = parts.last().unwrap_or(&"");
                 format!("with open('{}') as f:\n    for i, line in enumerate(f):\n        if i >= {}: break\n        print(line, end='')", path, n)
             }
             "tail" => {
                 let n = if parts.contains(&"-n") {
-                    parts.iter().position(|p| *p == "-n").and_then(|i| parts.get(i+1)).and_then(|s| s.parse::<usize>().ok()).unwrap_or(10)
-                } else { 10 };
+                    parts
+                        .iter()
+                        .position(|p| *p == "-n")
+                        .and_then(|i| parts.get(i + 1))
+                        .and_then(|s| s.parse::<usize>().ok())
+                        .unwrap_or(10)
+                } else {
+                    10
+                };
                 let path = parts.last().unwrap_or(&"");
                 format!("with open('{}') as f:\n    lines = f.readlines()\n    for line in lines[-{}:]:\n        print(line, end='')", path, n)
             }
@@ -1665,7 +1856,8 @@ impl CellManager {
                 let path = parts.last().unwrap_or(&"");
                 format!("with open('{}') as f:\n    content = f.read()\n    lines = content.count('\\n')\n    words = len(content.split())\n    chars = len(content)\n    print(f'  {{lines}}  {{words}} {{chars}} {}')", path, path)
             }
-            "env" => "import os\nfor k, v in sorted(os.environ.items()):\n    print(f'{k}={v}')".to_string(),
+            "env" => "import os\nfor k, v in sorted(os.environ.items()):\n    print(f'{k}={v}')"
+                .to_string(),
             "find" => {
                 let path = parts.get(1).unwrap_or(&"/data");
                 format!("import os\nfor root, dirs, files in os.walk('{}'):\n    for f in files:\n        print(os.path.join(root, f))", path)
@@ -1680,7 +1872,8 @@ impl CellManager {
                 }
 
                 // Collect package names (skip flags like -q, --upgrade, etc.)
-                let packages: Vec<&str> = parts[2..].iter()
+                let packages: Vec<&str> = parts[2..]
+                    .iter()
                     .filter(|p| !p.starts_with('-'))
                     .copied()
                     .collect();
@@ -1691,15 +1884,33 @@ impl CellManager {
 
                 // Known C-extension packages that can't work in WASI
                 let c_extension_packages = [
-                    "numpy", "pandas", "scipy", "scikit-learn", "sklearn",
-                    "torch", "tensorflow", "matplotlib", "cv2", "opencv-python",
-                    "pillow", "PIL", "lxml", "psycopg2", "cryptography",
-                    "grpcio", "h5py", "Cython", "uvloop",
+                    "numpy",
+                    "pandas",
+                    "scipy",
+                    "scikit-learn",
+                    "sklearn",
+                    "torch",
+                    "tensorflow",
+                    "matplotlib",
+                    "cv2",
+                    "opencv-python",
+                    "pillow",
+                    "PIL",
+                    "lxml",
+                    "psycopg2",
+                    "cryptography",
+                    "grpcio",
+                    "h5py",
+                    "Cython",
+                    "uvloop",
                 ];
 
                 for pkg in &packages {
                     let normalized = pkg.to_lowercase().replace('-', "_");
-                    if c_extension_packages.iter().any(|cp| cp.to_lowercase().replace('-', "_") == normalized) {
+                    if c_extension_packages
+                        .iter()
+                        .any(|cp| cp.to_lowercase().replace('-', "_") == normalized)
+                    {
                         return Err(format!(
                             "'{}' requires native C extensions and can't run in the WASI sandbox. \
                              Use template 'python3-data' which includes numpy, pandas, and scipy pre-compiled.",
@@ -1711,7 +1922,8 @@ impl CellManager {
                 // Download and extract wheels server-side
                 let (data_path, _) = {
                     let cells = self.cells.read().map_err(|e| e.to_string())?;
-                    let cell = cells.get(cell_id)
+                    let cell = cells
+                        .get(cell_id)
                         .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
                     (cell.data_path.clone(), cell.info.template.clone())
                 };
@@ -1738,15 +1950,16 @@ impl CellManager {
                                 let version = json["info"]["version"].as_str().unwrap_or("unknown");
 
                                 // Look for a pure-Python wheel URL
-                                let wheel_url = json["urls"].as_array()
+                                let wheel_url = json["urls"]
+                                    .as_array()
                                     .and_then(|urls| {
                                         urls.iter().find(|u| {
                                             let filename = u["filename"].as_str().unwrap_or("");
-                                            filename.ends_with(".whl") &&
-                                            (filename.contains("-py3-none-any") ||
-                                             filename.contains("-py2.py3-none-any") ||
-                                             filename.contains("-py3-none-linux") ||
-                                             filename.contains("-none-any"))
+                                            filename.ends_with(".whl")
+                                                && (filename.contains("-py3-none-any")
+                                                    || filename.contains("-py2.py3-none-any")
+                                                    || filename.contains("-py3-none-linux")
+                                                    || filename.contains("-none-any"))
                                         })
                                     })
                                     .and_then(|u| u["url"].as_str());
@@ -1773,7 +1986,8 @@ impl CellManager {
 
                                                 match unzip {
                                                     Ok(u) if u.status.success() => {
-                                                        installed.push(format!("{} {}", pkg, version));
+                                                        installed
+                                                            .push(format!("{} {}", pkg, version));
                                                         // Clean up .whl file
                                                         let _ = std::fs::remove_file(&whl_path);
                                                     }
@@ -1820,14 +2034,19 @@ impl CellManager {
             "python" | "python3" => {
                 // Direct Python execution: python3 -c "print(42)"
                 if parts.len() >= 3 && parts[1] == "-c" {
-                    parts[2..].join(" ").trim_matches('"').trim_matches('\'').to_string()
+                    parts[2..]
+                        .join(" ")
+                        .trim_matches('"')
+                        .trim_matches('\'')
+                        .to_string()
                 } else {
                     return Err("Use python3 -c \"code\" for inline execution".into());
                 }
             }
             // Sprint A Batch 6: Direct passthrough to host git binary
             "git" => {
-                let data_path = self.get_cell_data_path(cell_id)
+                let data_path = self
+                    .get_cell_data_path(cell_id)
                     .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
                 let args = &parts[1..];
                 let output = std::process::Command::new("git")
@@ -1857,7 +2076,8 @@ impl CellManager {
         };
 
         // Check if cell is persistent — route accordingly
-        let is_persistent = self.get_cell(cell_id)
+        let is_persistent = self
+            .get_cell(cell_id)
             .map(|info| info.persistent)
             .unwrap_or(false);
 
@@ -1873,16 +2093,25 @@ impl CellManager {
     }
 
     /// Execute code in a cell sandbox.
-    pub fn exec(&self, cell_id: &str, code: &str, language: Option<&str>) -> Result<CellExecResult, String> {
+    pub fn exec(
+        &self,
+        cell_id: &str,
+        code: &str,
+        language: Option<&str>,
+    ) -> Result<CellExecResult, String> {
         let start = Instant::now();
 
         // Look up cell and get its data path + template
         let (data_path, template_name) = {
             let mut cells = self.cells.write().map_err(|e| e.to_string())?;
-            let cell = cells.get_mut(cell_id)
+            let cell = cells
+                .get_mut(cell_id)
                 .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
             if cell.info.status != CellStatus::Running {
-                return Err(format!("Cell {} is not running (status: {:?})", cell_id, cell.info.status));
+                return Err(format!(
+                    "Cell {} is not running (status: {:?})",
+                    cell_id, cell.info.status
+                ));
             }
             cell.info.executions += 1;
             (cell.data_path.clone(), cell.info.template.clone())
@@ -1946,29 +2175,36 @@ impl CellManager {
         wasi_builder.stdout(stdout_pipe.clone());
         wasi_builder.stderr(stderr_pipe.clone());
         // Set stdin for .syn templates (code via stdin)
-        if !matches!(effective_template, "python3" | "python" | "javascript" | "js") {
+        if !matches!(
+            effective_template,
+            "python3" | "python" | "javascript" | "js"
+        ) {
             wasi_builder.stdin(MemoryInputPipe::new(code.as_bytes().to_vec()));
         }
 
         // Pre-open the cell's data directory as /data/ in the guest
-        wasi_builder.preopened_dir(
-            &data_path,
-            "/data",
-            wasmtime_wasi::DirPerms::all(),
-            wasmtime_wasi::FilePerms::all(),
-        ).map_err(|e| format!("Failed to preopened dir: {}", e))?;
+        wasi_builder
+            .preopened_dir(
+                &data_path,
+                "/data",
+                wasmtime_wasi::DirPerms::all(),
+                wasmtime_wasi::FilePerms::all(),
+            )
+            .map_err(|e| format!("Failed to preopened dir: {}", e))?;
 
         // Pre-open Python stdlib for CPython-WASI templates
         // CPython needs /lib/python3.14 to import any stdlib module (math, os, etc.)
         if matches!(effective_template, "python3" | "python") {
             let lib_path = self.template_dir.join("lib");
             if lib_path.exists() {
-                wasi_builder.preopened_dir(
-                    &lib_path,
-                    "/lib",
-                    wasmtime_wasi::DirPerms::READ,
-                    wasmtime_wasi::FilePerms::READ,
-                ).map_err(|e| format!("Failed to preopen Python stdlib: {}", e))?;
+                wasi_builder
+                    .preopened_dir(
+                        &lib_path,
+                        "/lib",
+                        wasmtime_wasi::DirPerms::READ,
+                        wasmtime_wasi::FilePerms::READ,
+                    )
+                    .map_err(|e| format!("Failed to preopen Python stdlib: {}", e))?;
             }
             // Sprint C Phase C2: mount template-specific package directories
             if let Some(tpl_info) = self.get_template_info(&template_name) {
@@ -1976,7 +2212,8 @@ impl CellManager {
                 let rootfs_dir = self.templates_root.join("rootfs").join(&tpl_info.name);
                 if rootfs_dir.exists() {
                     let _ = wasi_builder.preopened_dir(
-                        &rootfs_dir, "/lib/site-packages",
+                        &rootfs_dir,
+                        "/lib/site-packages",
                         wasmtime_wasi::DirPerms::READ,
                         wasmtime_wasi::FilePerms::READ,
                     );
@@ -1988,7 +2225,8 @@ impl CellManager {
                     if pkg_dir.exists() {
                         let mount = format!("/lib/{}", pkg_name);
                         let _ = wasi_builder.preopened_dir(
-                            &pkg_dir, &mount,
+                            &pkg_dir,
+                            &mount,
                             wasmtime_wasi::DirPerms::READ,
                             wasmtime_wasi::FilePerms::READ,
                         );
@@ -2009,7 +2247,10 @@ impl CellManager {
                 wasi_builder.args(&["python3", "/data/__run__.py"]);
                 wasi_builder.env("PYTHONUNBUFFERED", "1");
                 // Sprint C: point CPython-WASI at the stdlib mounted via preopened /lib
-                wasi_builder.env("PYTHONPATH", "/lib/site-packages:/lib/python312.zip:/lib/python3.12:/lib");
+                wasi_builder.env(
+                    "PYTHONPATH",
+                    "/lib/site-packages:/lib/python312.zip:/lib/python3.12:/lib",
+                );
                 wasi_builder.env("PYTHONHOME", "/");
             }
             "javascript" | "js" => {
@@ -2034,18 +2275,18 @@ impl CellManager {
             .map_err(|e| format!("WASI link error: {}", e))?;
 
         // The Cognitive Sandbox: Inject absolute zero-latency Moonshot bindings
-        linker.func_wrap(
-            "env",
-            "synapse_infer",
-            synapse_infer_host_fn,
-        ).map_err(|e| format!("Host inference link error: {}", e))?;
+        linker
+            .func_wrap("env", "synapse_infer", synapse_infer_host_fn)
+            .map_err(|e| format!("Host inference link error: {}", e))?;
 
         // Instantiate
-        let instance = linker.instantiate(&mut store, &module)
+        let instance = linker
+            .instantiate(&mut store, &module)
             .map_err(|e| format!("Instantiation error: {}", e))?;
 
         // Call _start (WASI entry point)
-        let start_fn = instance.get_typed_func::<(), ()>(&mut store, "_start")
+        let start_fn = instance
+            .get_typed_func::<(), ()>(&mut store, "_start")
             .map_err(|e| format!("No _start function: {}", e))?;
 
         let call_result = start_fn.call(&mut store, ());
@@ -2053,8 +2294,12 @@ impl CellManager {
         // Read output from memory pipes
         let stdout_bytes = stdout_pipe.contents().to_vec();
         let stderr_bytes = stderr_pipe.contents().to_vec();
-        let stdout = String::from_utf8_lossy(&stdout_bytes).trim_end().to_string();
-        let stderr = String::from_utf8_lossy(&stderr_bytes).trim_end().to_string();
+        let stdout = String::from_utf8_lossy(&stdout_bytes)
+            .trim_end()
+            .to_string();
+        let stderr = String::from_utf8_lossy(&stderr_bytes)
+            .trim_end()
+            .to_string();
 
         let exit_code: i32 = match call_result {
             Ok(()) => 0,
@@ -2065,8 +2310,11 @@ impl CellManager {
                     // Normal WASI exit — this is expected behavior
                     // Try to extract exit code from the error message
                     // Pattern: "exit status 0" or "I32Exit(0)"
-                    if msg.contains("status 0") || msg.contains("Exit(0)") || 
-                       msg.contains("exit(0)") || msg.ends_with("_start") {
+                    if msg.contains("status 0")
+                        || msg.contains("Exit(0)")
+                        || msg.contains("exit(0)")
+                        || msg.ends_with("_start")
+                    {
                         0
                     } else {
                         1 // Non-zero exit
@@ -2079,7 +2327,8 @@ impl CellManager {
                     } else {
                         format!("{}\n{}", stderr, msg)
                     };
-                    let receipt = ExecutionReceipt::new(code, &stdout, &full_stderr, effective_template);
+                    let receipt =
+                        ExecutionReceipt::new(code, &stdout, &full_stderr, effective_template);
                     return Ok(CellExecResult {
                         stdout,
                         stderr: full_stderr,
@@ -2151,8 +2400,8 @@ impl CellManager {
         child_config.cranelift_opt_level(OptLevel::Speed);
         child_config.consume_fuel(true);
         child_config.wasm_simd(true);
-        let child_engine = Engine::new(&child_config)
-            .map_err(|e| format!("Engine error: {}", e))?;
+        let child_engine =
+            Engine::new(&child_config).map_err(|e| format!("Engine error: {}", e))?;
 
         let module = Module::new(&child_engine, wasm_bytes)
             .map_err(|e| format!("Module compile error: {}", e))?;
@@ -2166,42 +2415,60 @@ impl CellManager {
         child_linker.allow_shadowing(true);
         let _ = child_linker.define_unknown_imports_as_traps(&module);
 
-        child_linker.func_wrap("env", "print",
-            |mut caller: Caller<'_, SynChildState>, ptr: i32, len: i32| {
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                let s = ptr as usize;
-                let e = s + len as usize;
-                if e <= data.len() {
-                    let chunk = data[s..e].to_vec();
-                    caller.data_mut().stdout.extend_from_slice(&chunk);
-                }
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "print",
+                |mut caller: Caller<'_, SynChildState>, ptr: i32, len: i32| {
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    let s = ptr as usize;
+                    let e = s + len as usize;
+                    if e <= data.len() {
+                        let chunk = data[s..e].to_vec();
+                        caller.data_mut().stdout.extend_from_slice(&chunk);
+                    }
+                },
+            )
+            .ok();
 
         // print_i64: convert i64 to string, append with newline
-        child_linker.func_wrap("env", "print_i64",
-            |mut caller: Caller<'_, SynChildState>, val: i64| {
-                let s = format!("{}\n", val);
-                caller.data_mut().stdout.extend_from_slice(s.as_bytes());
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "print_i64",
+                |mut caller: Caller<'_, SynChildState>, val: i64| {
+                    let s = format!("{}\n", val);
+                    caller.data_mut().stdout.extend_from_slice(s.as_bytes());
+                },
+            )
+            .ok();
 
         // print_f32: convert f32 to string, append with newline
-        child_linker.func_wrap("env", "print_f32",
-            |mut caller: Caller<'_, SynChildState>, val: f32| {
-                let s = format!("{}\n", val);
-                caller.data_mut().stdout.extend_from_slice(s.as_bytes());
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "print_f32",
+                |mut caller: Caller<'_, SynChildState>, val: f32| {
+                    let s = format!("{}\n", val);
+                    caller.data_mut().stdout.extend_from_slice(s.as_bytes());
+                },
+            )
+            .ok();
 
         let mut store = Store::new(&child_engine, SynChildState { stdout: Vec::new() });
         store.set_fuel(10_000_000).ok();
 
-        let instance = child_linker.instantiate(&mut store, &module)
+        let instance = child_linker
+            .instantiate(&mut store, &module)
             .map_err(|e| format!("Instantiate error: {}", e))?;
 
-        let main_fn = instance.get_typed_func::<(), i64>(&mut store, "main")
+        let main_fn = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
             .map_err(|e| format!("No main function: {}", e))?;
 
-        let result = main_fn.call(&mut store, ())
+        let result = main_fn
+            .call(&mut store, ())
             .map_err(|e| format!("Execution error: {}", e))?;
 
         let stdout = String::from_utf8_lossy(&store.data().stdout).to_string();
@@ -2244,7 +2511,10 @@ impl CellManager {
             }
             Err(e) => {
                 if verbose {
-                    eprintln!("[.cell] Rust transpile unsupported ({}), trying Python fallback", e);
+                    eprintln!(
+                        "[.cell] Rust transpile unsupported ({}), trying Python fallback",
+                        e
+                    );
                 }
                 // Fallback to Python subprocess transpiler — only works in dev mode
                 // where the SDK is on disk. In pip-installed mode this fails silently
@@ -2265,13 +2535,16 @@ impl CellManager {
                 if !verbose {
                     cmd.stderr(std::process::Stdio::null());
                 }
-                let transpile_output = cmd.output()
+                let transpile_output = cmd
+                    .output()
                     .map_err(|e| format!("transpile command error: {}", e))?;
                 let _ = std::fs::remove_file(&tmp_script);
                 if !transpile_output.status.success() || transpile_output.stdout.is_empty() {
                     return Err("Transpilation unsupported; falling back to CPython".to_string());
                 }
-                String::from_utf8_lossy(&transpile_output.stdout).trim().to_string()
+                String::from_utf8_lossy(&transpile_output.stdout)
+                    .trim()
+                    .to_string()
             }
         };
 
@@ -2279,7 +2552,10 @@ impl CellManager {
         let wasm_bytes = match crate::compiler::compile_syn(&syn_source) {
             Ok(bytes) => bytes,
             Err(e) => {
-                eprintln!("[.cell] Rust compile failed ({}), trying Python fallback", e);
+                eprintln!(
+                    "[.cell] Rust compile failed ({}), trying Python fallback",
+                    e
+                );
                 // Fallback to Python compiler
                 let tmp_compile = format!("/tmp/syn_compile_{}.py", std::process::id());
                 let compile_content = format!(
@@ -2307,577 +2583,866 @@ impl CellManager {
         let mut child_config = Config::new();
         child_config.cranelift_opt_level(OptLevel::Speed);
         child_config.consume_fuel(true);
-        let child_engine = Engine::new(&child_config)
-            .map_err(|e| format!("Engine error: {}", e))?;
+        let child_engine =
+            Engine::new(&child_config).map_err(|e| format!("Engine error: {}", e))?;
 
         let module = Module::new(&child_engine, wasm_bytes)
             .map_err(|e| format!("Module compile error: {}", e))?;
 
         struct TranspileChildState {
             stdout: Vec<u8>,
-            string_arena_offset: usize,  // APC: tracks next free byte in string arena
+            string_arena_offset: usize, // APC: tracks next free byte in string arena
         }
 
         let mut child_linker = Linker::<TranspileChildState>::new(&child_engine);
         child_linker.allow_shadowing(true);
         let _ = child_linker.define_unknown_imports_as_traps(&module);
 
-        child_linker.func_wrap("env", "print",
-            |mut caller: Caller<'_, TranspileChildState>, ptr: i32, len: i32| {
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                let s = ptr as usize;
-                let e = s + len as usize;
-                if e <= data.len() {
-                    let chunk = data[s..e].to_vec();
-                    caller.data_mut().stdout.extend_from_slice(&chunk);
-                }
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "print",
+                |mut caller: Caller<'_, TranspileChildState>, ptr: i32, len: i32| {
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    let s = ptr as usize;
+                    let e = s + len as usize;
+                    if e <= data.len() {
+                        let chunk = data[s..e].to_vec();
+                        caller.data_mut().stdout.extend_from_slice(&chunk);
+                    }
+                },
+            )
+            .ok();
 
         // print_i64: convert i64 to string, append with newline
-        child_linker.func_wrap("env", "print_i64",
-            |mut caller: Caller<'_, TranspileChildState>, val: i64| {
-                let s = format!("{}\n", val);
-                caller.data_mut().stdout.extend_from_slice(s.as_bytes());
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "print_i64",
+                |mut caller: Caller<'_, TranspileChildState>, val: i64| {
+                    let s = format!("{}\n", val);
+                    caller.data_mut().stdout.extend_from_slice(s.as_bytes());
+                },
+            )
+            .ok();
 
         // print_f32: convert f32 to string, append with newline
-        child_linker.func_wrap("env", "print_f32",
-            |mut caller: Caller<'_, TranspileChildState>, val: f32| {
-                let s = format!("{}\n", val);
-                caller.data_mut().stdout.extend_from_slice(s.as_bytes());
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "print_f32",
+                |mut caller: Caller<'_, TranspileChildState>, val: f32| {
+                    let s = format!("{}\n", val);
+                    caller.data_mut().stdout.extend_from_slice(s.as_bytes());
+                },
+            )
+            .ok();
 
         // APC: print_nl() → print a newline character
-        child_linker.func_wrap("env", "print_nl",
-            |mut caller: Caller<'_, TranspileChildState>| -> i64 {
-                caller.data_mut().stdout.push(b'\n');
-                0
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "print_nl",
+                |mut caller: Caller<'_, TranspileChildState>| -> i64 {
+                    caller.data_mut().stdout.push(b'\n');
+                    0
+                },
+            )
+            .ok();
 
         // APC: str_concat(packed_a, packed_b) → concatenate two strings in Wasm memory
         // Returns packed (new_ptr << 32 | new_len) as i64
-        child_linker.func_wrap("env", "str_concat",
-            |mut caller: Caller<'_, TranspileChildState>, a: i64, b: i64| -> i64 {
-                let ptr_a = (a >> 32) as usize;
-                let len_a = (a & 0xFFFFFFFF) as usize;
-                let ptr_b = (b >> 32) as usize;
-                let len_b = (b & 0xFFFFFFFF) as usize;
+        child_linker
+            .func_wrap(
+                "env",
+                "str_concat",
+                |mut caller: Caller<'_, TranspileChildState>, a: i64, b: i64| -> i64 {
+                    let ptr_a = (a >> 32) as usize;
+                    let len_a = (a & 0xFFFFFFFF) as usize;
+                    let ptr_b = (b >> 32) as usize;
+                    let len_b = (b & 0xFFFFFFFF) as usize;
 
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
 
-                // Read both source strings
-                let mut combined = Vec::with_capacity(len_a + len_b);
-                if ptr_a + len_a <= data.len() {
-                    combined.extend_from_slice(&data[ptr_a..ptr_a + len_a]);
-                }
-                if ptr_b + len_b <= data.len() {
-                    combined.extend_from_slice(&data[ptr_b..ptr_b + len_b]);
-                }
+                    // Read both source strings
+                    let mut combined = Vec::with_capacity(len_a + len_b);
+                    if ptr_a + len_a <= data.len() {
+                        combined.extend_from_slice(&data[ptr_a..ptr_a + len_a]);
+                    }
+                    if ptr_b + len_b <= data.len() {
+                        combined.extend_from_slice(&data[ptr_b..ptr_b + len_b]);
+                    }
 
-                // Allocate in arena (starts at 131072 = 128KB, away from data sections at 64KB)
-                let new_ptr = caller.data().string_arena_offset;
-                let new_len = combined.len();
-                caller.data_mut().string_arena_offset = new_ptr + new_len + 1;
+                    // Allocate in arena (starts at 131072 = 128KB, away from data sections at 64KB)
+                    let new_ptr = caller.data().string_arena_offset;
+                    let new_len = combined.len();
+                    caller.data_mut().string_arena_offset = new_ptr + new_len + 1;
 
-                // Write combined string to Wasm memory
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                if new_ptr + new_len < mem.data_size(&caller) {
-                    let data_mut = mem.data_mut(&mut caller);
-                    data_mut[new_ptr..new_ptr + new_len].copy_from_slice(&combined);
-                }
+                    // Write combined string to Wasm memory
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    if new_ptr + new_len < mem.data_size(&caller) {
+                        let data_mut = mem.data_mut(&mut caller);
+                        data_mut[new_ptr..new_ptr + new_len].copy_from_slice(&combined);
+                    }
 
-                // Return packed pointer
-                ((new_ptr as i64) << 32) | (new_len as i64)
-            }).ok();
+                    // Return packed pointer
+                    ((new_ptr as i64) << 32) | (new_len as i64)
+                },
+            )
+            .ok();
 
         // APC: int_to_str(val) → convert integer to decimal string in Wasm memory
         // Returns packed (ptr << 32 | len) as i64
-        child_linker.func_wrap("env", "int_to_str",
-            |mut caller: Caller<'_, TranspileChildState>, val: i64| -> i64 {
-                let s = format!("{}", val);
-                let bytes = s.as_bytes();
+        child_linker
+            .func_wrap(
+                "env",
+                "int_to_str",
+                |mut caller: Caller<'_, TranspileChildState>, val: i64| -> i64 {
+                    let s = format!("{}", val);
+                    let bytes = s.as_bytes();
 
-                let new_ptr = caller.data().string_arena_offset;
-                let new_len = bytes.len();
-                caller.data_mut().string_arena_offset = new_ptr + new_len + 1;
+                    let new_ptr = caller.data().string_arena_offset;
+                    let new_len = bytes.len();
+                    caller.data_mut().string_arena_offset = new_ptr + new_len + 1;
 
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                if new_ptr + new_len < mem.data_size(&caller) {
-                    let data_mut = mem.data_mut(&mut caller);
-                    data_mut[new_ptr..new_ptr + new_len].copy_from_slice(bytes);
-                }
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    if new_ptr + new_len < mem.data_size(&caller) {
+                        let data_mut = mem.data_mut(&mut caller);
+                        data_mut[new_ptr..new_ptr + new_len].copy_from_slice(bytes);
+                    }
 
-                ((new_ptr as i64) << 32) | (new_len as i64)
-            }).ok();
+                    ((new_ptr as i64) << 32) | (new_len as i64)
+                },
+            )
+            .ok();
 
         // ── APC String Method FFIs ──────────────────────────────────
         // Helper: read a packed string from Wasm memory
         // Each method reads (ptr, len) from packed i64, transforms, writes result to arena
 
         // ffi_numpy_dot(a_idx, b_idx) -> f32
-        child_linker.func_wrap("env", "ffi_numpy_dot",
-            |mut caller: Caller<'_, TranspileChildState>, a_idx: i64, b_idx: i64| -> f32 {
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                
-                let a_base = (a_idx as usize) * 8;
-                let b_base = (b_idx as usize) * 8;
-                
-                if a_base + 8 > data.len() || b_base + 8 > data.len() { return 0.0; }
-                
-                let a_len = i64::from_le_bytes(data[a_base..a_base+8].try_into().unwrap_or([0;8])) as usize;
-                let b_len = i64::from_le_bytes(data[b_base..b_base+8].try_into().unwrap_or([0;8])) as usize;
-                
-                let len = std::cmp::min(a_len, b_len);
-                if len == 0 { return 0.0; }
-                
-                let max_a = a_base + 8 + len * 8;
-                let max_b = b_base + 8 + len * 8;
-                if max_a > data.len() || max_b > data.len() { return 0.0; }
-                
-                let mut result = 0.0;
-                for i in 0..len {
-                    let a_val = f32::from_bits(u32::from_le_bytes(data[a_base + 8 + i * 8..a_base + 12 + i * 8].try_into().unwrap()));
-                    let b_val = f32::from_bits(u32::from_le_bytes(data[b_base + 8 + i * 8..b_base + 12 + i * 8].try_into().unwrap()));
-                    result += a_val * b_val;
-                }
-                result
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "ffi_numpy_dot",
+                |mut caller: Caller<'_, TranspileChildState>, a_idx: i64, b_idx: i64| -> f32 {
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+
+                    let a_base = (a_idx as usize) * 8;
+                    let b_base = (b_idx as usize) * 8;
+
+                    if a_base + 8 > data.len() || b_base + 8 > data.len() {
+                        return 0.0;
+                    }
+
+                    let a_len =
+                        i64::from_le_bytes(data[a_base..a_base + 8].try_into().unwrap_or([0; 8]))
+                            as usize;
+                    let b_len =
+                        i64::from_le_bytes(data[b_base..b_base + 8].try_into().unwrap_or([0; 8]))
+                            as usize;
+
+                    let len = std::cmp::min(a_len, b_len);
+                    if len == 0 {
+                        return 0.0;
+                    }
+
+                    let max_a = a_base + 8 + len * 8;
+                    let max_b = b_base + 8 + len * 8;
+                    if max_a > data.len() || max_b > data.len() {
+                        return 0.0;
+                    }
+
+                    let mut result = 0.0;
+                    for i in 0..len {
+                        let a_val = f32::from_bits(u32::from_le_bytes(
+                            data[a_base + 8 + i * 8..a_base + 12 + i * 8]
+                                .try_into()
+                                .unwrap(),
+                        ));
+                        let b_val = f32::from_bits(u32::from_le_bytes(
+                            data[b_base + 8 + i * 8..b_base + 12 + i * 8]
+                                .try_into()
+                                .unwrap(),
+                        ));
+                        result += a_val * b_val;
+                    }
+                    result
+                },
+            )
+            .ok();
 
         // ffi_numpy_sum(a_idx) -> f32
-        child_linker.func_wrap("env", "ffi_numpy_sum",
-            |mut caller: Caller<'_, TranspileChildState>, a_idx: i64| -> f32 {
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                
-                let a_base = (a_idx as usize) * 8;
-                if a_base + 8 > data.len() { return 0.0; }
-                
-                let a_len = i64::from_le_bytes(data[a_base..a_base+8].try_into().unwrap_or([0;8])) as usize;
-                if a_len == 0 { return 0.0; }
-                
-                let max_a = a_base + 8 + a_len * 8;
-                if max_a > data.len() { return 0.0; }
-                
-                let mut result = 0.0;
-                for i in 0..a_len {
-                    let a_val = f32::from_bits(u32::from_le_bytes(data[a_base + 8 + i * 8..a_base + 12 + i * 8].try_into().unwrap()));
-                    result += a_val;
-                }
-                result
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "ffi_numpy_sum",
+                |mut caller: Caller<'_, TranspileChildState>, a_idx: i64| -> f32 {
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
 
+                    let a_base = (a_idx as usize) * 8;
+                    if a_base + 8 > data.len() {
+                        return 0.0;
+                    }
+
+                    let a_len =
+                        i64::from_le_bytes(data[a_base..a_base + 8].try_into().unwrap_or([0; 8]))
+                            as usize;
+                    if a_len == 0 {
+                        return 0.0;
+                    }
+
+                    let max_a = a_base + 8 + a_len * 8;
+                    if max_a > data.len() {
+                        return 0.0;
+                    }
+
+                    let mut result = 0.0;
+                    for i in 0..a_len {
+                        let a_val = f32::from_bits(u32::from_le_bytes(
+                            data[a_base + 8 + i * 8..a_base + 12 + i * 8]
+                                .try_into()
+                                .unwrap(),
+                        ));
+                        result += a_val;
+                    }
+                    result
+                },
+            )
+            .ok();
 
         // str_upper(packed) → uppercase string
-        child_linker.func_wrap("env", "str_upper",
-            |mut caller: Caller<'_, TranspileChildState>, packed: i64| -> i64 {
-                let ptr = (packed >> 32) as usize;
-                let len = (packed & 0xFFFFFFFF) as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                let s = std::str::from_utf8(&data[ptr..ptr+len]).unwrap_or("").to_uppercase();
-                let bytes = s.as_bytes();
-                let new_ptr = caller.data().string_arena_offset;
-                caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                if new_ptr + bytes.len() < mem.data_size(&caller) {
-                    mem.data_mut(&mut caller)[new_ptr..new_ptr+bytes.len()].copy_from_slice(bytes);
-                }
-                ((new_ptr as i64) << 32) | (bytes.len() as i64)
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "str_upper",
+                |mut caller: Caller<'_, TranspileChildState>, packed: i64| -> i64 {
+                    let ptr = (packed >> 32) as usize;
+                    let len = (packed & 0xFFFFFFFF) as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    let s = std::str::from_utf8(&data[ptr..ptr + len])
+                        .unwrap_or("")
+                        .to_uppercase();
+                    let bytes = s.as_bytes();
+                    let new_ptr = caller.data().string_arena_offset;
+                    caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    if new_ptr + bytes.len() < mem.data_size(&caller) {
+                        mem.data_mut(&mut caller)[new_ptr..new_ptr + bytes.len()]
+                            .copy_from_slice(bytes);
+                    }
+                    ((new_ptr as i64) << 32) | (bytes.len() as i64)
+                },
+            )
+            .ok();
 
         // str_lower(packed) → lowercase string
-        child_linker.func_wrap("env", "str_lower",
-            |mut caller: Caller<'_, TranspileChildState>, packed: i64| -> i64 {
-                let ptr = (packed >> 32) as usize;
-                let len = (packed & 0xFFFFFFFF) as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                let s = std::str::from_utf8(&data[ptr..ptr+len]).unwrap_or("").to_lowercase();
-                let bytes = s.as_bytes();
-                let new_ptr = caller.data().string_arena_offset;
-                caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                if new_ptr + bytes.len() < mem.data_size(&caller) {
-                    mem.data_mut(&mut caller)[new_ptr..new_ptr+bytes.len()].copy_from_slice(bytes);
-                }
-                ((new_ptr as i64) << 32) | (bytes.len() as i64)
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "str_lower",
+                |mut caller: Caller<'_, TranspileChildState>, packed: i64| -> i64 {
+                    let ptr = (packed >> 32) as usize;
+                    let len = (packed & 0xFFFFFFFF) as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    let s = std::str::from_utf8(&data[ptr..ptr + len])
+                        .unwrap_or("")
+                        .to_lowercase();
+                    let bytes = s.as_bytes();
+                    let new_ptr = caller.data().string_arena_offset;
+                    caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    if new_ptr + bytes.len() < mem.data_size(&caller) {
+                        mem.data_mut(&mut caller)[new_ptr..new_ptr + bytes.len()]
+                            .copy_from_slice(bytes);
+                    }
+                    ((new_ptr as i64) << 32) | (bytes.len() as i64)
+                },
+            )
+            .ok();
 
         // str_strip(packed) → trimmed string
-        child_linker.func_wrap("env", "str_strip",
-            |mut caller: Caller<'_, TranspileChildState>, packed: i64| -> i64 {
-                let ptr = (packed >> 32) as usize;
-                let len = (packed & 0xFFFFFFFF) as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                let s = std::str::from_utf8(&data[ptr..ptr+len]).unwrap_or("").trim().to_string();
-                let bytes = s.as_bytes();
-                let new_ptr = caller.data().string_arena_offset;
-                caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                if new_ptr + bytes.len() < mem.data_size(&caller) {
-                    mem.data_mut(&mut caller)[new_ptr..new_ptr+bytes.len()].copy_from_slice(bytes);
-                }
-                ((new_ptr as i64) << 32) | (bytes.len() as i64)
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "str_strip",
+                |mut caller: Caller<'_, TranspileChildState>, packed: i64| -> i64 {
+                    let ptr = (packed >> 32) as usize;
+                    let len = (packed & 0xFFFFFFFF) as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    let s = std::str::from_utf8(&data[ptr..ptr + len])
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    let bytes = s.as_bytes();
+                    let new_ptr = caller.data().string_arena_offset;
+                    caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    if new_ptr + bytes.len() < mem.data_size(&caller) {
+                        mem.data_mut(&mut caller)[new_ptr..new_ptr + bytes.len()]
+                            .copy_from_slice(bytes);
+                    }
+                    ((new_ptr as i64) << 32) | (bytes.len() as i64)
+                },
+            )
+            .ok();
 
         // str_lstrip / str_rstrip
-        child_linker.func_wrap("env", "str_lstrip",
-            |mut caller: Caller<'_, TranspileChildState>, packed: i64| -> i64 {
-                let ptr = (packed >> 32) as usize;
-                let len = (packed & 0xFFFFFFFF) as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let s = std::str::from_utf8(&mem.data(&caller)[ptr..ptr+len]).unwrap_or("").trim_start().to_string();
-                let bytes = s.as_bytes();
-                let new_ptr = caller.data().string_arena_offset;
-                caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                if new_ptr + bytes.len() < mem.data_size(&caller) {
-                    mem.data_mut(&mut caller)[new_ptr..new_ptr+bytes.len()].copy_from_slice(bytes);
-                }
-                ((new_ptr as i64) << 32) | (bytes.len() as i64)
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "str_lstrip",
+                |mut caller: Caller<'_, TranspileChildState>, packed: i64| -> i64 {
+                    let ptr = (packed >> 32) as usize;
+                    let len = (packed & 0xFFFFFFFF) as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let s = std::str::from_utf8(&mem.data(&caller)[ptr..ptr + len])
+                        .unwrap_or("")
+                        .trim_start()
+                        .to_string();
+                    let bytes = s.as_bytes();
+                    let new_ptr = caller.data().string_arena_offset;
+                    caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    if new_ptr + bytes.len() < mem.data_size(&caller) {
+                        mem.data_mut(&mut caller)[new_ptr..new_ptr + bytes.len()]
+                            .copy_from_slice(bytes);
+                    }
+                    ((new_ptr as i64) << 32) | (bytes.len() as i64)
+                },
+            )
+            .ok();
 
-        child_linker.func_wrap("env", "str_rstrip",
-            |mut caller: Caller<'_, TranspileChildState>, packed: i64| -> i64 {
-                let ptr = (packed >> 32) as usize;
-                let len = (packed & 0xFFFFFFFF) as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let s = std::str::from_utf8(&mem.data(&caller)[ptr..ptr+len]).unwrap_or("").trim_end().to_string();
-                let bytes = s.as_bytes();
-                let new_ptr = caller.data().string_arena_offset;
-                caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                if new_ptr + bytes.len() < mem.data_size(&caller) {
-                    mem.data_mut(&mut caller)[new_ptr..new_ptr+bytes.len()].copy_from_slice(bytes);
-                }
-                ((new_ptr as i64) << 32) | (bytes.len() as i64)
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "str_rstrip",
+                |mut caller: Caller<'_, TranspileChildState>, packed: i64| -> i64 {
+                    let ptr = (packed >> 32) as usize;
+                    let len = (packed & 0xFFFFFFFF) as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let s = std::str::from_utf8(&mem.data(&caller)[ptr..ptr + len])
+                        .unwrap_or("")
+                        .trim_end()
+                        .to_string();
+                    let bytes = s.as_bytes();
+                    let new_ptr = caller.data().string_arena_offset;
+                    caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    if new_ptr + bytes.len() < mem.data_size(&caller) {
+                        mem.data_mut(&mut caller)[new_ptr..new_ptr + bytes.len()]
+                            .copy_from_slice(bytes);
+                    }
+                    ((new_ptr as i64) << 32) | (bytes.len() as i64)
+                },
+            )
+            .ok();
 
         // str_replace(packed_str, packed_old, packed_new) → replaced string
-        child_linker.func_wrap("env", "str_replace",
-            |mut caller: Caller<'_, TranspileChildState>, packed: i64, old: i64, new: i64| -> i64 {
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                let read_str = |p: i64| -> String {
-                    let ptr = (p >> 32) as usize;
-                    let len = (p & 0xFFFFFFFF) as usize;
-                    std::str::from_utf8(&data[ptr..ptr+len]).unwrap_or("").to_string()
-                };
-                let s = read_str(packed).replace(&read_str(old), &read_str(new));
-                let bytes = s.as_bytes();
-                let new_ptr = caller.data().string_arena_offset;
-                caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                if new_ptr + bytes.len() < mem.data_size(&caller) {
-                    mem.data_mut(&mut caller)[new_ptr..new_ptr+bytes.len()].copy_from_slice(bytes);
-                }
-                ((new_ptr as i64) << 32) | (bytes.len() as i64)
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "str_replace",
+                |mut caller: Caller<'_, TranspileChildState>,
+                 packed: i64,
+                 old: i64,
+                 new: i64|
+                 -> i64 {
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    let read_str = |p: i64| -> String {
+                        let ptr = (p >> 32) as usize;
+                        let len = (p & 0xFFFFFFFF) as usize;
+                        std::str::from_utf8(&data[ptr..ptr + len])
+                            .unwrap_or("")
+                            .to_string()
+                    };
+                    let s = read_str(packed).replace(&read_str(old), &read_str(new));
+                    let bytes = s.as_bytes();
+                    let new_ptr = caller.data().string_arena_offset;
+                    caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    if new_ptr + bytes.len() < mem.data_size(&caller) {
+                        mem.data_mut(&mut caller)[new_ptr..new_ptr + bytes.len()]
+                            .copy_from_slice(bytes);
+                    }
+                    ((new_ptr as i64) << 32) | (bytes.len() as i64)
+                },
+            )
+            .ok();
 
         // str_startswith(packed_str, packed_prefix) → 1 or 0
-        child_linker.func_wrap("env", "str_startswith",
-            |mut caller: Caller<'_, TranspileChildState>, packed: i64, prefix: i64| -> i64 {
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                let read_str = |p: i64| -> String {
-                    let ptr = (p >> 32) as usize;
-                    let len = (p & 0xFFFFFFFF) as usize;
-                    std::str::from_utf8(&data[ptr..ptr+len]).unwrap_or("").to_string()
-                };
-                if read_str(packed).starts_with(&read_str(prefix)) { 1 } else { 0 }
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "str_startswith",
+                |mut caller: Caller<'_, TranspileChildState>, packed: i64, prefix: i64| -> i64 {
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    let read_str = |p: i64| -> String {
+                        let ptr = (p >> 32) as usize;
+                        let len = (p & 0xFFFFFFFF) as usize;
+                        std::str::from_utf8(&data[ptr..ptr + len])
+                            .unwrap_or("")
+                            .to_string()
+                    };
+                    if read_str(packed).starts_with(&read_str(prefix)) {
+                        1
+                    } else {
+                        0
+                    }
+                },
+            )
+            .ok();
 
         // str_endswith(packed_str, packed_suffix) → 1 or 0
-        child_linker.func_wrap("env", "str_endswith",
-            |mut caller: Caller<'_, TranspileChildState>, packed: i64, suffix: i64| -> i64 {
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                let read_str = |p: i64| -> String {
-                    let ptr = (p >> 32) as usize;
-                    let len = (p & 0xFFFFFFFF) as usize;
-                    std::str::from_utf8(&data[ptr..ptr+len]).unwrap_or("").to_string()
-                };
-                if read_str(packed).ends_with(&read_str(suffix)) { 1 } else { 0 }
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "str_endswith",
+                |mut caller: Caller<'_, TranspileChildState>, packed: i64, suffix: i64| -> i64 {
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    let read_str = |p: i64| -> String {
+                        let ptr = (p >> 32) as usize;
+                        let len = (p & 0xFFFFFFFF) as usize;
+                        std::str::from_utf8(&data[ptr..ptr + len])
+                            .unwrap_or("")
+                            .to_string()
+                    };
+                    if read_str(packed).ends_with(&read_str(suffix)) {
+                        1
+                    } else {
+                        0
+                    }
+                },
+            )
+            .ok();
 
         // str_find(packed_str, packed_sub) → index or -1
-        child_linker.func_wrap("env", "str_find",
-            |mut caller: Caller<'_, TranspileChildState>, packed: i64, sub: i64| -> i64 {
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                let read_str = |p: i64| -> String {
-                    let ptr = (p >> 32) as usize;
-                    let len = (p & 0xFFFFFFFF) as usize;
-                    std::str::from_utf8(&data[ptr..ptr+len]).unwrap_or("").to_string()
-                };
-                match read_str(packed).find(&read_str(sub)) {
-                    Some(idx) => idx as i64,
-                    None => -1,
-                }
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "str_find",
+                |mut caller: Caller<'_, TranspileChildState>, packed: i64, sub: i64| -> i64 {
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    let read_str = |p: i64| -> String {
+                        let ptr = (p >> 32) as usize;
+                        let len = (p & 0xFFFFFFFF) as usize;
+                        std::str::from_utf8(&data[ptr..ptr + len])
+                            .unwrap_or("")
+                            .to_string()
+                    };
+                    match read_str(packed).find(&read_str(sub)) {
+                        Some(idx) => idx as i64,
+                        None => -1,
+                    }
+                },
+            )
+            .ok();
 
         // str_count(packed_str, packed_sub) → count of occurrences
-        child_linker.func_wrap("env", "str_count",
-            |mut caller: Caller<'_, TranspileChildState>, packed: i64, sub: i64| -> i64 {
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                let read_str = |p: i64| -> String {
-                    let ptr = (p >> 32) as usize;
-                    let len = (p & 0xFFFFFFFF) as usize;
-                    std::str::from_utf8(&data[ptr..ptr+len]).unwrap_or("").to_string()
-                };
-                read_str(packed).matches(&read_str(sub)).count() as i64
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "str_count",
+                |mut caller: Caller<'_, TranspileChildState>, packed: i64, sub: i64| -> i64 {
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    let read_str = |p: i64| -> String {
+                        let ptr = (p >> 32) as usize;
+                        let len = (p & 0xFFFFFFFF) as usize;
+                        std::str::from_utf8(&data[ptr..ptr + len])
+                            .unwrap_or("")
+                            .to_string()
+                    };
+                    read_str(packed).matches(&read_str(sub)).count() as i64
+                },
+            )
+            .ok();
 
         // ── JSON FFI Host Functions ──────────────────────────────────
         // json_loads(packed_str) → dict_ptr in linear memory
         // Parses JSON string using serde_json, writes dict format [count, k0_hash, v0, k1_hash, v1, ...]
-        child_linker.func_wrap("env", "json_loads",
-            |mut caller: Caller<'_, TranspileChildState>, packed: i64| -> i64 {
-                let ptr = (packed >> 32) as usize;
-                let len = (packed & 0xFFFFFFFF) as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                if ptr + len > data.len() { return 0; }
-                let json_str = std::str::from_utf8(&data[ptr..ptr+len]).unwrap_or("{}");
+        child_linker
+            .func_wrap(
+                "env",
+                "json_loads",
+                |mut caller: Caller<'_, TranspileChildState>, packed: i64| -> i64 {
+                    let ptr = (packed >> 32) as usize;
+                    let len = (packed & 0xFFFFFFFF) as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    if ptr + len > data.len() {
+                        return 0;
+                    }
+                    let json_str = std::str::from_utf8(&data[ptr..ptr + len]).unwrap_or("{}");
 
-                let parsed: serde_json::Value = match serde_json::from_str(json_str) {
-                    Ok(v) => v,
-                    Err(_) => return 0,
-                };
+                    let parsed: serde_json::Value = match serde_json::from_str(json_str) {
+                        Ok(v) => v,
+                        Err(_) => return 0,
+                    };
 
-                // Allocate dict in string arena area
-                let dict_base = caller.data().string_arena_offset;
-                let mut offset = dict_base;
+                    // Allocate dict in string arena area
+                    let dict_base = caller.data().string_arena_offset;
+                    let mut offset = dict_base;
 
-                match &parsed {
-                    serde_json::Value::Object(map) => {
-                        let count = map.len();
-                        // Write count at dict_base
-                        let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                        let mem_data = mem.data_mut(&mut caller);
-                        if offset + 8 + count * 16 < mem_data.len() {
-                            // count
-                            mem_data[offset..offset+8].copy_from_slice(&(count as i64).to_le_bytes());
-                            offset += 8;
-                            // key-value pairs
-                            for (key, val) in map {
-                                // Hash key using FNV-1a (same as transpiler)
-                                let mut h: u64 = 0xcbf29ce484222325;
-                                for byte in key.as_bytes() {
-                                    h ^= *byte as u64;
-                                    h = h.wrapping_mul(0x100000001b3);
-                                }
-                                let key_hash = (h & 0x7FFFFFFFFFFFFFFF) as i64;
-                                mem_data[offset..offset+8].copy_from_slice(&key_hash.to_le_bytes());
+                    match &parsed {
+                        serde_json::Value::Object(map) => {
+                            let count = map.len();
+                            // Write count at dict_base
+                            let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                            let mem_data = mem.data_mut(&mut caller);
+                            if offset + 8 + count * 16 < mem_data.len() {
+                                // count
+                                mem_data[offset..offset + 8]
+                                    .copy_from_slice(&(count as i64).to_le_bytes());
                                 offset += 8;
-                                // Value: convert to i64 (string → packed ptr, number → i64, bool → 0/1)
-                                let val_i64: i64 = match val {
-                                    serde_json::Value::Number(n) => {
-                                        if let Some(i) = n.as_i64() { i }
-                                        else if let Some(f) = n.as_f64() { f as i64 }
-                                        else { 0 }
+                                // key-value pairs
+                                for (key, val) in map {
+                                    // Hash key using FNV-1a (same as transpiler)
+                                    let mut h: u64 = 0xcbf29ce484222325;
+                                    for byte in key.as_bytes() {
+                                        h ^= *byte as u64;
+                                        h = h.wrapping_mul(0x100000001b3);
                                     }
-                                    serde_json::Value::Bool(b) => if *b { 1 } else { 0 },
-                                    serde_json::Value::String(_s) => {
-                                        // String values in JSON dicts are not yet fully supported
-                                        // in the transpiler path — return 0 placeholder.
-                                        // Full support requires writing the string to the arena
-                                        // and returning a packed (ptr << 32 | len) i64.
-                                        0i64
-                                    }
-                                    serde_json::Value::Null => 0,
-                                    _ => 0, // nested objects/arrays simplified to 0
-                                };
-                                mem_data[offset..offset+8].copy_from_slice(&val_i64.to_le_bytes());
+                                    let key_hash = (h & 0x7FFFFFFFFFFFFFFF) as i64;
+                                    mem_data[offset..offset + 8]
+                                        .copy_from_slice(&key_hash.to_le_bytes());
+                                    offset += 8;
+                                    // Value: convert to i64 (string → packed ptr, number → i64, bool → 0/1)
+                                    let val_i64: i64 = match val {
+                                        serde_json::Value::Number(n) => {
+                                            if let Some(i) = n.as_i64() {
+                                                i
+                                            } else if let Some(f) = n.as_f64() {
+                                                f as i64
+                                            } else {
+                                                0
+                                            }
+                                        }
+                                        serde_json::Value::Bool(b) => {
+                                            if *b {
+                                                1
+                                            } else {
+                                                0
+                                            }
+                                        }
+                                        serde_json::Value::String(_s) => {
+                                            // String values in JSON dicts are not yet fully supported
+                                            // in the transpiler path — return 0 placeholder.
+                                            // Full support requires writing the string to the arena
+                                            // and returning a packed (ptr << 32 | len) i64.
+                                            0i64
+                                        }
+                                        serde_json::Value::Null => 0,
+                                        _ => 0, // nested objects/arrays simplified to 0
+                                    };
+                                    mem_data[offset..offset + 8]
+                                        .copy_from_slice(&val_i64.to_le_bytes());
+                                    offset += 8;
+                                }
+                            }
+                        }
+                        _ => {
+                            // Non-object JSON: write count=0
+                            let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                            let mem_data = mem.data_mut(&mut caller);
+                            if offset + 8 < mem_data.len() {
+                                mem_data[offset..offset + 8].copy_from_slice(&0i64.to_le_bytes());
                                 offset += 8;
                             }
                         }
                     }
-                    _ => {
-                        // Non-object JSON: write count=0
-                        let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                        let mem_data = mem.data_mut(&mut caller);
-                        if offset + 8 < mem_data.len() {
-                            mem_data[offset..offset+8].copy_from_slice(&0i64.to_le_bytes());
-                            offset += 8;
-                        }
-                    }
-                }
 
-                caller.data_mut().string_arena_offset = offset;
-                dict_base as i64
-            }).ok();
+                    caller.data_mut().string_arena_offset = offset;
+                    dict_base as i64
+                },
+            )
+            .ok();
 
         // json_dumps(dict_ptr) → packed_str (JSON serialization)
-        child_linker.func_wrap("env", "json_dumps",
-            |mut caller: Caller<'_, TranspileChildState>, dict_ptr: i64| -> i64 {
-                let base = dict_ptr as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                if base + 8 > data.len() { return 0; }
+        child_linker
+            .func_wrap(
+                "env",
+                "json_dumps",
+                |mut caller: Caller<'_, TranspileChildState>, dict_ptr: i64| -> i64 {
+                    let base = dict_ptr as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    if base + 8 > data.len() {
+                        return 0;
+                    }
 
-                let count = i64::from_le_bytes(data[base..base+8].try_into().unwrap_or([0;8])) as usize;
-                let mut map = serde_json::Map::new();
-                for i in 0..count {
-                    let k_off = base + 8 + i * 16;
-                    let v_off = k_off + 8;
-                    if v_off + 8 > data.len() { break; }
-                    let key_hash = i64::from_le_bytes(data[k_off..k_off+8].try_into().unwrap_or([0;8]));
-                    let val = i64::from_le_bytes(data[v_off..v_off+8].try_into().unwrap_or([0;8]));
-                    map.insert(format!("{}", key_hash), serde_json::Value::Number(serde_json::Number::from(val)));
-                }
+                    let count =
+                        i64::from_le_bytes(data[base..base + 8].try_into().unwrap_or([0; 8]))
+                            as usize;
+                    let mut map = serde_json::Map::new();
+                    for i in 0..count {
+                        let k_off = base + 8 + i * 16;
+                        let v_off = k_off + 8;
+                        if v_off + 8 > data.len() {
+                            break;
+                        }
+                        let key_hash =
+                            i64::from_le_bytes(data[k_off..k_off + 8].try_into().unwrap_or([0; 8]));
+                        let val =
+                            i64::from_le_bytes(data[v_off..v_off + 8].try_into().unwrap_or([0; 8]));
+                        map.insert(
+                            format!("{}", key_hash),
+                            serde_json::Value::Number(serde_json::Number::from(val)),
+                        );
+                    }
 
-                let json_str = serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_else(|_| "{}".to_string());
-                let bytes = json_str.as_bytes();
-                let new_ptr = caller.data().string_arena_offset;
-                caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                if new_ptr + bytes.len() < mem.data_size(&caller) {
-                    mem.data_mut(&mut caller)[new_ptr..new_ptr+bytes.len()].copy_from_slice(bytes);
-                }
-                ((new_ptr as i64) << 32) | (bytes.len() as i64)
-            }).ok();
+                    let json_str = serde_json::to_string(&serde_json::Value::Object(map))
+                        .unwrap_or_else(|_| "{}".to_string());
+                    let bytes = json_str.as_bytes();
+                    let new_ptr = caller.data().string_arena_offset;
+                    caller.data_mut().string_arena_offset = new_ptr + bytes.len() + 1;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    if new_ptr + bytes.len() < mem.data_size(&caller) {
+                        mem.data_mut(&mut caller)[new_ptr..new_ptr + bytes.len()]
+                            .copy_from_slice(bytes);
+                    }
+                    ((new_ptr as i64) << 32) | (bytes.len() as i64)
+                },
+            )
+            .ok();
 
         // json_get_str(dict_ptr, key_packed) → packed_str value
-        child_linker.func_wrap("env", "json_get_str",
-            |mut caller: Caller<'_, TranspileChildState>, dict_ptr: i64, key: i64| -> i64 {
-                // For now, delegate to dict_get — both use the same linear format
-                let base = dict_ptr as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                if base + 8 > data.len() { return 0; }
-                let count = i64::from_le_bytes(data[base..base+8].try_into().unwrap_or([0;8])) as usize;
-                // key is a packed string — extract its hash by reading the string content
-                let key_ptr = (key >> 32) as usize;
-                let key_len = (key & 0xFFFFFFFF) as usize;
-                if key_ptr + key_len > data.len() { return 0; }
-                let key_str = std::str::from_utf8(&data[key_ptr..key_ptr+key_len]).unwrap_or("");
-                // Hash with FNV-1a (same as transpiler)
-                let mut h: u64 = 0xcbf29ce484222325;
-                for byte in key_str.as_bytes() {
-                    h ^= *byte as u64;
-                    h = h.wrapping_mul(0x100000001b3);
-                }
-                let key_hash = (h & 0x7FFFFFFFFFFFFFFF) as i64;
-                // Linear scan
-                for i in 0..count {
-                    let k_off = base + 8 + i * 16;
-                    if k_off + 8 > data.len() { break; }
-                    let k = i64::from_le_bytes(data[k_off..k_off+8].try_into().unwrap_or([0;8]));
-                    if k == key_hash {
-                        let v_off = k_off + 8;
-                        if v_off + 8 > data.len() { return 0; }
-                        return i64::from_le_bytes(data[v_off..v_off+8].try_into().unwrap_or([0;8]));
+        child_linker
+            .func_wrap(
+                "env",
+                "json_get_str",
+                |mut caller: Caller<'_, TranspileChildState>, dict_ptr: i64, key: i64| -> i64 {
+                    // For now, delegate to dict_get — both use the same linear format
+                    let base = dict_ptr as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    if base + 8 > data.len() {
+                        return 0;
                     }
-                }
-                0
-            }).ok();
+                    let count =
+                        i64::from_le_bytes(data[base..base + 8].try_into().unwrap_or([0; 8]))
+                            as usize;
+                    // key is a packed string — extract its hash by reading the string content
+                    let key_ptr = (key >> 32) as usize;
+                    let key_len = (key & 0xFFFFFFFF) as usize;
+                    if key_ptr + key_len > data.len() {
+                        return 0;
+                    }
+                    let key_str =
+                        std::str::from_utf8(&data[key_ptr..key_ptr + key_len]).unwrap_or("");
+                    // Hash with FNV-1a (same as transpiler)
+                    let mut h: u64 = 0xcbf29ce484222325;
+                    for byte in key_str.as_bytes() {
+                        h ^= *byte as u64;
+                        h = h.wrapping_mul(0x100000001b3);
+                    }
+                    let key_hash = (h & 0x7FFFFFFFFFFFFFFF) as i64;
+                    // Linear scan
+                    for i in 0..count {
+                        let k_off = base + 8 + i * 16;
+                        if k_off + 8 > data.len() {
+                            break;
+                        }
+                        let k =
+                            i64::from_le_bytes(data[k_off..k_off + 8].try_into().unwrap_or([0; 8]));
+                        if k == key_hash {
+                            let v_off = k_off + 8;
+                            if v_off + 8 > data.len() {
+                                return 0;
+                            }
+                            return i64::from_le_bytes(
+                                data[v_off..v_off + 8].try_into().unwrap_or([0; 8]),
+                            );
+                        }
+                    }
+                    0
+                },
+            )
+            .ok();
 
         // json_get_int(dict_ptr, key_packed) → i64 value
-        child_linker.func_wrap("env", "json_get_int",
-            |mut caller: Caller<'_, TranspileChildState>, dict_ptr: i64, key: i64| -> i64 {
-                let base = dict_ptr as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                if base + 8 > data.len() { return 0; }
-                let count = i64::from_le_bytes(data[base..base+8].try_into().unwrap_or([0;8])) as usize;
-                let key_ptr = (key >> 32) as usize;
-                let key_len = (key & 0xFFFFFFFF) as usize;
-                if key_ptr + key_len > data.len() { return 0; }
-                let key_str = std::str::from_utf8(&data[key_ptr..key_ptr+key_len]).unwrap_or("");
-                let mut h: u64 = 0xcbf29ce484222325;
-                for byte in key_str.as_bytes() { h ^= *byte as u64; h = h.wrapping_mul(0x100000001b3); }
-                let key_hash = (h & 0x7FFFFFFFFFFFFFFF) as i64;
-                for i in 0..count {
-                    let k_off = base + 8 + i * 16;
-                    if k_off + 16 > data.len() { break; }
-                    let k = i64::from_le_bytes(data[k_off..k_off+8].try_into().unwrap_or([0;8]));
-                    if k == key_hash {
-                        return i64::from_le_bytes(data[k_off+8..k_off+16].try_into().unwrap_or([0;8]));
+        child_linker
+            .func_wrap(
+                "env",
+                "json_get_int",
+                |mut caller: Caller<'_, TranspileChildState>, dict_ptr: i64, key: i64| -> i64 {
+                    let base = dict_ptr as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    if base + 8 > data.len() {
+                        return 0;
                     }
-                }
-                0
-            }).ok();
+                    let count =
+                        i64::from_le_bytes(data[base..base + 8].try_into().unwrap_or([0; 8]))
+                            as usize;
+                    let key_ptr = (key >> 32) as usize;
+                    let key_len = (key & 0xFFFFFFFF) as usize;
+                    if key_ptr + key_len > data.len() {
+                        return 0;
+                    }
+                    let key_str =
+                        std::str::from_utf8(&data[key_ptr..key_ptr + key_len]).unwrap_or("");
+                    let mut h: u64 = 0xcbf29ce484222325;
+                    for byte in key_str.as_bytes() {
+                        h ^= *byte as u64;
+                        h = h.wrapping_mul(0x100000001b3);
+                    }
+                    let key_hash = (h & 0x7FFFFFFFFFFFFFFF) as i64;
+                    for i in 0..count {
+                        let k_off = base + 8 + i * 16;
+                        if k_off + 16 > data.len() {
+                            break;
+                        }
+                        let k =
+                            i64::from_le_bytes(data[k_off..k_off + 8].try_into().unwrap_or([0; 8]));
+                        if k == key_hash {
+                            return i64::from_le_bytes(
+                                data[k_off + 8..k_off + 16].try_into().unwrap_or([0; 8]),
+                            );
+                        }
+                    }
+                    0
+                },
+            )
+            .ok();
 
         // json_get_float(dict_ptr, key_packed) → f32 value
-        child_linker.func_wrap("env", "json_get_float",
-            |mut caller: Caller<'_, TranspileChildState>, dict_ptr: i64, key: i64| -> f32 {
-                let base = dict_ptr as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                if base + 8 > data.len() { return 0.0; }
-                let count = i64::from_le_bytes(data[base..base+8].try_into().unwrap_or([0;8])) as usize;
-                let key_ptr = (key >> 32) as usize;
-                let key_len = (key & 0xFFFFFFFF) as usize;
-                if key_ptr + key_len > data.len() { return 0.0; }
-                let key_str = std::str::from_utf8(&data[key_ptr..key_ptr+key_len]).unwrap_or("");
-                let mut h: u64 = 0xcbf29ce484222325;
-                for byte in key_str.as_bytes() { h ^= *byte as u64; h = h.wrapping_mul(0x100000001b3); }
-                let key_hash = (h & 0x7FFFFFFFFFFFFFFF) as i64;
-                for i in 0..count {
-                    let k_off = base + 8 + i * 16;
-                    if k_off + 16 > data.len() { break; }
-                    let k = i64::from_le_bytes(data[k_off..k_off+8].try_into().unwrap_or([0;8]));
-                    if k == key_hash {
-                        let v = i64::from_le_bytes(data[k_off+8..k_off+16].try_into().unwrap_or([0;8]));
-                        return v as f32;
+        child_linker
+            .func_wrap(
+                "env",
+                "json_get_float",
+                |mut caller: Caller<'_, TranspileChildState>, dict_ptr: i64, key: i64| -> f32 {
+                    let base = dict_ptr as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    if base + 8 > data.len() {
+                        return 0.0;
                     }
-                }
-                0.0
-            }).ok();
+                    let count =
+                        i64::from_le_bytes(data[base..base + 8].try_into().unwrap_or([0; 8]))
+                            as usize;
+                    let key_ptr = (key >> 32) as usize;
+                    let key_len = (key & 0xFFFFFFFF) as usize;
+                    if key_ptr + key_len > data.len() {
+                        return 0.0;
+                    }
+                    let key_str =
+                        std::str::from_utf8(&data[key_ptr..key_ptr + key_len]).unwrap_or("");
+                    let mut h: u64 = 0xcbf29ce484222325;
+                    for byte in key_str.as_bytes() {
+                        h ^= *byte as u64;
+                        h = h.wrapping_mul(0x100000001b3);
+                    }
+                    let key_hash = (h & 0x7FFFFFFFFFFFFFFF) as i64;
+                    for i in 0..count {
+                        let k_off = base + 8 + i * 16;
+                        if k_off + 16 > data.len() {
+                            break;
+                        }
+                        let k =
+                            i64::from_le_bytes(data[k_off..k_off + 8].try_into().unwrap_or([0; 8]));
+                        if k == key_hash {
+                            let v = i64::from_le_bytes(
+                                data[k_off + 8..k_off + 16].try_into().unwrap_or([0; 8]),
+                            );
+                            return v as f32;
+                        }
+                    }
+                    0.0
+                },
+            )
+            .ok();
 
         // json_get_index(arr_ptr, index) → i64 element value
-        child_linker.func_wrap("env", "json_get_index",
-            |mut caller: Caller<'_, TranspileChildState>, arr_ptr: i64, index: i64| -> i64 {
-                let base = arr_ptr as usize;
-                let idx = index as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                if base + 8 > data.len() { return 0; }
-                let count = i64::from_le_bytes(data[base..base+8].try_into().unwrap_or([0;8])) as usize;
-                if idx >= count { return 0; }
-                // Array elements stored at base + 8 + idx * 8 (no key-value pairs for arrays)
-                let v_off = base + 8 + idx * 8;
-                if v_off + 8 > data.len() { return 0; }
-                i64::from_le_bytes(data[v_off..v_off+8].try_into().unwrap_or([0;8]))
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "json_get_index",
+                |mut caller: Caller<'_, TranspileChildState>, arr_ptr: i64, index: i64| -> i64 {
+                    let base = arr_ptr as usize;
+                    let idx = index as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    if base + 8 > data.len() {
+                        return 0;
+                    }
+                    let count =
+                        i64::from_le_bytes(data[base..base + 8].try_into().unwrap_or([0; 8]))
+                            as usize;
+                    if idx >= count {
+                        return 0;
+                    }
+                    // Array elements stored at base + 8 + idx * 8 (no key-value pairs for arrays)
+                    let v_off = base + 8 + idx * 8;
+                    if v_off + 8 > data.len() {
+                        return 0;
+                    }
+                    i64::from_le_bytes(data[v_off..v_off + 8].try_into().unwrap_or([0; 8]))
+                },
+            )
+            .ok();
 
         // json_length(collection_ptr) → i64 count
-        child_linker.func_wrap("env", "json_length",
-            |mut caller: Caller<'_, TranspileChildState>, ptr: i64| -> i64 {
-                let base = ptr as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                if base + 8 > data.len() { return 0; }
-                i64::from_le_bytes(data[base..base+8].try_into().unwrap_or([0;8]))
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "json_length",
+                |mut caller: Caller<'_, TranspileChildState>, ptr: i64| -> i64 {
+                    let base = ptr as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    if base + 8 > data.len() {
+                        return 0;
+                    }
+                    i64::from_le_bytes(data[base..base + 8].try_into().unwrap_or([0; 8]))
+                },
+            )
+            .ok();
 
-        let mut store = Store::new(&child_engine, TranspileChildState { stdout: Vec::new(), string_arena_offset: 131072 });
+        let mut store = Store::new(
+            &child_engine,
+            TranspileChildState {
+                stdout: Vec::new(),
+                string_arena_offset: 131072,
+            },
+        );
         store.set_fuel(10_000_000).ok();
 
-        let instance = child_linker.instantiate(&mut store, &module)
+        let instance = child_linker
+            .instantiate(&mut store, &module)
             .map_err(|e| format!("Instantiate error: {}", e))?;
 
         // Try both i64 and f32 return types since math ops return float
-        let result_str = if let Ok(main_fn) = instance.get_typed_func::<(), i64>(&mut store, "main") {
-            let result = main_fn.call(&mut store, ())
+        let result_str = if let Ok(main_fn) = instance.get_typed_func::<(), i64>(&mut store, "main")
+        {
+            let result = main_fn
+                .call(&mut store, ())
                 .map_err(|e| format!("Execution error: {}", e))?;
             format!("{}", result)
         } else if let Ok(main_fn) = instance.get_typed_func::<(), f32>(&mut store, "main") {
-            let result = main_fn.call(&mut store, ())
+            let result = main_fn
+                .call(&mut store, ())
                 .map_err(|e| format!("Execution error: {}", e))?;
             format!("{}", result)
         } else {
             // Fallback: try untyped call
-            let main_fn = instance.get_func(&mut store, "main")
+            let main_fn = instance
+                .get_func(&mut store, "main")
                 .ok_or_else(|| "No main function found".to_string())?;
             let mut results = [wasmtime::Val::I64(0)];
-            main_fn.call(&mut store, &[], &mut results)
+            main_fn
+                .call(&mut store, &[], &mut results)
                 .map_err(|e| format!("Execution error: {}", e))?;
             match &results[0] {
                 wasmtime::Val::I64(v) => format!("{}", v),
@@ -2901,7 +3466,8 @@ impl CellManager {
         };
 
         // Record as syn execution (it IS .syn under the hood)
-        self.metrics.record_exec("python3-transpiled", latency, false);
+        self.metrics
+            .record_exec("python3-transpiled", latency, false);
 
         Ok(CellExecResult {
             stdout: final_stdout,
@@ -2915,7 +3481,7 @@ impl CellManager {
     /// Execute Python code via .syn code replay for persistent sessions.
     /// Accumulates Python source across calls, re-transpiles the full history each time.
     /// Output suppression via UUID-based marker: history output is discarded.
-    /// 
+    ///
     /// Performance: ~1-3ms per call (0.26ms compile + <1ms execute) vs 182ms CPython replay.
     fn exec_persistent_syn(
         &self,
@@ -2941,22 +3507,25 @@ impl CellManager {
             String::new()
         } else {
             let cells = self.cells.read().map_err(|e| e.to_string())?;
-            let cell = cells.get(cell_id)
+            let cell = cells
+                .get(cell_id)
                 .ok_or_else(|| "Cell not found".to_string())?;
             cell.syn_history.clone().unwrap_or_default()
         };
 
         // UUID-based marker (review note #1: avoid collision with user code)
-        let marker = format!("__SYN_REPLAY_{:016x}__",
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() as u64);
+        let marker = format!(
+            "__SYN_REPLAY_{:016x}__",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() as u64
+        );
 
         let combined_source = if existing_history.is_empty() {
             new_code.to_string()
         } else {
-            format!(
-                "{}\nprint(\"{}\")\n{}",
-                existing_history, marker, new_code
-            )
+            format!("{}\nprint(\"{}\")\n{}", existing_history, marker, new_code)
         };
 
         // Step 2: Transpile the full combined source → .syn
@@ -2970,7 +3539,10 @@ impl CellManager {
                     serde_json::to_string(&combined_source).unwrap_or_default()
                 );
                 if std::fs::write(&tmp_script, &script_content).is_err() {
-                    return Err(format!("Transpile failed (Rust: {}), Python script write failed", e));
+                    return Err(format!(
+                        "Transpile failed (Rust: {}), Python script write failed",
+                        e
+                    ));
                 }
                 let output = std::process::Command::new("python3")
                     .arg(&tmp_script)
@@ -3005,7 +3577,10 @@ impl CellManager {
                     .map_err(|e2| format!("Compile error: {}", e2))?;
                 let _ = std::fs::remove_file(&tmp_compile);
                 if !output.status.success() || output.stdout.is_empty() {
-                    return Err(format!("Compilation failed: {}", String::from_utf8_lossy(&output.stderr)));
+                    return Err(format!(
+                        "Compilation failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
                 }
                 output.stdout
             }
@@ -3015,8 +3590,8 @@ impl CellManager {
         let mut child_config = Config::new();
         child_config.cranelift_opt_level(OptLevel::Speed);
         child_config.consume_fuel(true);
-        let child_engine = Engine::new(&child_config)
-            .map_err(|e| format!("Engine error: {}", e))?;
+        let child_engine =
+            Engine::new(&child_config).map_err(|e| format!("Engine error: {}", e))?;
 
         let module = Module::new(&child_engine, wasm_bytes)
             .map_err(|e| format!("Module compile error: {}", e))?;
@@ -3031,144 +3606,231 @@ impl CellManager {
         let _ = child_linker.define_unknown_imports_as_traps(&module);
 
         // Register all the same FFI functions (print, str ops, json ops)
-        child_linker.func_wrap("env", "print",
-            |mut caller: Caller<'_, ReplayChildState>, ptr: i32, len: i32| {
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                let s = ptr as usize;
-                let e = s + len as usize;
-                if e <= data.len() {
-                    let slice = data[s..e].to_vec();
-                    caller.data_mut().stdout.extend_from_slice(&slice);
-                }
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "print",
+                |mut caller: Caller<'_, ReplayChildState>, ptr: i32, len: i32| {
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    let s = ptr as usize;
+                    let e = s + len as usize;
+                    if e <= data.len() {
+                        let slice = data[s..e].to_vec();
+                        caller.data_mut().stdout.extend_from_slice(&slice);
+                    }
+                },
+            )
+            .ok();
 
-        child_linker.func_wrap("env", "print_i64",
-            |mut caller: Caller<'_, ReplayChildState>, val: i64| {
-                let s = format!("{}\n", val);
-                caller.data_mut().stdout.extend_from_slice(s.as_bytes());
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "print_i64",
+                |mut caller: Caller<'_, ReplayChildState>, val: i64| {
+                    let s = format!("{}\n", val);
+                    caller.data_mut().stdout.extend_from_slice(s.as_bytes());
+                },
+            )
+            .ok();
 
-        child_linker.func_wrap("env", "print_f32",
-            |mut caller: Caller<'_, ReplayChildState>, val: f32| {
-                let s = format!("{}\n", val);
-                caller.data_mut().stdout.extend_from_slice(s.as_bytes());
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "print_f32",
+                |mut caller: Caller<'_, ReplayChildState>, val: f32| {
+                    let s = format!("{}\n", val);
+                    caller.data_mut().stdout.extend_from_slice(s.as_bytes());
+                },
+            )
+            .ok();
 
-        child_linker.func_wrap("env", "print_nl",
-            |mut caller: Caller<'_, ReplayChildState>| -> i64 {
-                caller.data_mut().stdout.push(b'\n');
-                0
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "print_nl",
+                |mut caller: Caller<'_, ReplayChildState>| -> i64 {
+                    caller.data_mut().stdout.push(b'\n');
+                    0
+                },
+            )
+            .ok();
 
-        child_linker.func_wrap("env", "str_concat",
-            |mut caller: Caller<'_, ReplayChildState>, a: i64, b: i64| -> i64 {
-                let ptr_a = (a >> 32) as usize;
-                let len_a = (a & 0xFFFFFFFF) as usize;
-                let ptr_b = (b >> 32) as usize;
-                let len_b = (b & 0xFFFFFFFF) as usize;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                let mut combined = Vec::with_capacity(len_a + len_b);
-                if ptr_a + len_a <= data.len() { combined.extend_from_slice(&data[ptr_a..ptr_a + len_a]); }
-                if ptr_b + len_b <= data.len() { combined.extend_from_slice(&data[ptr_b..ptr_b + len_b]); }
-                let new_ptr = caller.data().string_arena_offset;
-                let new_len = combined.len();
-                caller.data_mut().string_arena_offset = new_ptr + new_len + 1;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                if new_ptr + new_len < mem.data_size(&caller) {
-                    mem.data_mut(&mut caller)[new_ptr..new_ptr + new_len].copy_from_slice(&combined);
-                }
-                ((new_ptr as i64) << 32) | (new_len as i64)
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "str_concat",
+                |mut caller: Caller<'_, ReplayChildState>, a: i64, b: i64| -> i64 {
+                    let ptr_a = (a >> 32) as usize;
+                    let len_a = (a & 0xFFFFFFFF) as usize;
+                    let ptr_b = (b >> 32) as usize;
+                    let len_b = (b & 0xFFFFFFFF) as usize;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+                    let mut combined = Vec::with_capacity(len_a + len_b);
+                    if ptr_a + len_a <= data.len() {
+                        combined.extend_from_slice(&data[ptr_a..ptr_a + len_a]);
+                    }
+                    if ptr_b + len_b <= data.len() {
+                        combined.extend_from_slice(&data[ptr_b..ptr_b + len_b]);
+                    }
+                    let new_ptr = caller.data().string_arena_offset;
+                    let new_len = combined.len();
+                    caller.data_mut().string_arena_offset = new_ptr + new_len + 1;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    if new_ptr + new_len < mem.data_size(&caller) {
+                        mem.data_mut(&mut caller)[new_ptr..new_ptr + new_len]
+                            .copy_from_slice(&combined);
+                    }
+                    ((new_ptr as i64) << 32) | (new_len as i64)
+                },
+            )
+            .ok();
 
-        child_linker.func_wrap("env", "int_to_str",
-            |mut caller: Caller<'_, ReplayChildState>, val: i64| -> i64 {
-                let s = format!("{}", val);
-                let bytes = s.as_bytes();
-                let new_ptr = caller.data().string_arena_offset;
-                let new_len = bytes.len();
-                caller.data_mut().string_arena_offset = new_ptr + new_len + 1;
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                if new_ptr + new_len < mem.data_size(&caller) {
-                    mem.data_mut(&mut caller)[new_ptr..new_ptr + new_len].copy_from_slice(bytes);
-                }
-                ((new_ptr as i64) << 32) | (new_len as i64)
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "int_to_str",
+                |mut caller: Caller<'_, ReplayChildState>, val: i64| -> i64 {
+                    let s = format!("{}", val);
+                    let bytes = s.as_bytes();
+                    let new_ptr = caller.data().string_arena_offset;
+                    let new_len = bytes.len();
+                    caller.data_mut().string_arena_offset = new_ptr + new_len + 1;
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    if new_ptr + new_len < mem.data_size(&caller) {
+                        mem.data_mut(&mut caller)[new_ptr..new_ptr + new_len]
+                            .copy_from_slice(bytes);
+                    }
+                    ((new_ptr as i64) << 32) | (new_len as i64)
+                },
+            )
+            .ok();
 
         // ffi_numpy_dot(a_idx, b_idx) -> f32
-        child_linker.func_wrap("env", "ffi_numpy_dot",
-            |mut caller: Caller<'_, ReplayChildState>, a_idx: i64, b_idx: i64| -> f32 {
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                
-                let a_base = (a_idx as usize) * 8;
-                let b_base = (b_idx as usize) * 8;
-                
-                if a_base + 8 > data.len() || b_base + 8 > data.len() { return 0.0; }
-                
-                let a_len = i64::from_le_bytes(data[a_base..a_base+8].try_into().unwrap_or([0;8])) as usize;
-                let b_len = i64::from_le_bytes(data[b_base..b_base+8].try_into().unwrap_or([0;8])) as usize;
-                
-                let len = std::cmp::min(a_len, b_len);
-                if len == 0 { return 0.0; }
-                
-                let max_a = a_base + 8 + len * 8;
-                let max_b = b_base + 8 + len * 8;
-                if max_a > data.len() || max_b > data.len() { return 0.0; }
-                
-                let mut result = 0.0;
-                for i in 0..len {
-                    let a_val = f32::from_bits(u32::from_le_bytes(data[a_base + 8 + i * 8..a_base + 12 + i * 8].try_into().unwrap()));
-                    let b_val = f32::from_bits(u32::from_le_bytes(data[b_base + 8 + i * 8..b_base + 12 + i * 8].try_into().unwrap()));
-                    result += a_val * b_val;
-                }
-                result
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "ffi_numpy_dot",
+                |mut caller: Caller<'_, ReplayChildState>, a_idx: i64, b_idx: i64| -> f32 {
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
+
+                    let a_base = (a_idx as usize) * 8;
+                    let b_base = (b_idx as usize) * 8;
+
+                    if a_base + 8 > data.len() || b_base + 8 > data.len() {
+                        return 0.0;
+                    }
+
+                    let a_len =
+                        i64::from_le_bytes(data[a_base..a_base + 8].try_into().unwrap_or([0; 8]))
+                            as usize;
+                    let b_len =
+                        i64::from_le_bytes(data[b_base..b_base + 8].try_into().unwrap_or([0; 8]))
+                            as usize;
+
+                    let len = std::cmp::min(a_len, b_len);
+                    if len == 0 {
+                        return 0.0;
+                    }
+
+                    let max_a = a_base + 8 + len * 8;
+                    let max_b = b_base + 8 + len * 8;
+                    if max_a > data.len() || max_b > data.len() {
+                        return 0.0;
+                    }
+
+                    let mut result = 0.0;
+                    for i in 0..len {
+                        let a_val = f32::from_bits(u32::from_le_bytes(
+                            data[a_base + 8 + i * 8..a_base + 12 + i * 8]
+                                .try_into()
+                                .unwrap(),
+                        ));
+                        let b_val = f32::from_bits(u32::from_le_bytes(
+                            data[b_base + 8 + i * 8..b_base + 12 + i * 8]
+                                .try_into()
+                                .unwrap(),
+                        ));
+                        result += a_val * b_val;
+                    }
+                    result
+                },
+            )
+            .ok();
 
         // ffi_numpy_sum(a_idx) -> f32
-        child_linker.func_wrap("env", "ffi_numpy_sum",
-            |mut caller: Caller<'_, ReplayChildState>, a_idx: i64| -> f32 {
-                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-                let data = mem.data(&caller);
-                
-                let a_base = (a_idx as usize) * 8;
-                if a_base + 8 > data.len() { return 0.0; }
-                
-                let a_len = i64::from_le_bytes(data[a_base..a_base+8].try_into().unwrap_or([0;8])) as usize;
-                if a_len == 0 { return 0.0; }
-                
-                let max_a = a_base + 8 + a_len * 8;
-                if max_a > data.len() { return 0.0; }
-                
-                let mut result = 0.0;
-                for i in 0..a_len {
-                    let a_val = f32::from_bits(u32::from_le_bytes(data[a_base + 8 + i * 8..a_base + 12 + i * 8].try_into().unwrap()));
-                    result += a_val;
-                }
-                result
-            }).ok();
+        child_linker
+            .func_wrap(
+                "env",
+                "ffi_numpy_sum",
+                |mut caller: Caller<'_, ReplayChildState>, a_idx: i64| -> f32 {
+                    let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                    let data = mem.data(&caller);
 
+                    let a_base = (a_idx as usize) * 8;
+                    if a_base + 8 > data.len() {
+                        return 0.0;
+                    }
 
-        let mut store = Store::new(&child_engine, ReplayChildState { stdout: Vec::new(), string_arena_offset: 131072 });
+                    let a_len =
+                        i64::from_le_bytes(data[a_base..a_base + 8].try_into().unwrap_or([0; 8]))
+                            as usize;
+                    if a_len == 0 {
+                        return 0.0;
+                    }
+
+                    let max_a = a_base + 8 + a_len * 8;
+                    if max_a > data.len() {
+                        return 0.0;
+                    }
+
+                    let mut result = 0.0;
+                    for i in 0..a_len {
+                        let a_val = f32::from_bits(u32::from_le_bytes(
+                            data[a_base + 8 + i * 8..a_base + 12 + i * 8]
+                                .try_into()
+                                .unwrap(),
+                        ));
+                        result += a_val;
+                    }
+                    result
+                },
+            )
+            .ok();
+
+        let mut store = Store::new(
+            &child_engine,
+            ReplayChildState {
+                stdout: Vec::new(),
+                string_arena_offset: 131072,
+            },
+        );
         store.set_fuel(10_000_000).ok();
 
-        let instance = child_linker.instantiate(&mut store, &module)
+        let instance = child_linker
+            .instantiate(&mut store, &module)
             .map_err(|e| format!("Instantiate error: {}", e))?;
 
-        let result_str = if let Ok(main_fn) = instance.get_typed_func::<(), i64>(&mut store, "main") {
-            let result = main_fn.call(&mut store, ())
+        let result_str = if let Ok(main_fn) = instance.get_typed_func::<(), i64>(&mut store, "main")
+        {
+            let result = main_fn
+                .call(&mut store, ())
                 .map_err(|e| format!("Execution error: {}", e))?;
             format!("{}", result)
         } else if let Ok(main_fn) = instance.get_typed_func::<(), f32>(&mut store, "main") {
-            let result = main_fn.call(&mut store, ())
+            let result = main_fn
+                .call(&mut store, ())
                 .map_err(|e| format!("Execution error: {}", e))?;
             format!("{}", result)
         } else {
-            let main_fn = instance.get_func(&mut store, "main")
+            let main_fn = instance
+                .get_func(&mut store, "main")
                 .ok_or_else(|| "No main function found".to_string())?;
             let mut results = [wasmtime::Val::I64(0)];
-            main_fn.call(&mut store, &[], &mut results)
+            main_fn
+                .call(&mut store, &[], &mut results)
                 .map_err(|e| format!("Execution error: {}", e))?;
             match &results[0] {
                 wasmtime::Val::I64(v) => format!("{}", v),
@@ -3216,10 +3878,15 @@ impl CellManager {
         }
 
         let receipt = ExecutionReceipt::new(new_code, &new_stdout, "", "python3-syn-replay");
-        self.metrics.record_exec("python3-syn-replay", latency, false);
+        self.metrics
+            .record_exec("python3-syn-replay", latency, false);
 
-        eprintln!("[.cell] .syn replay OK: {:.2}ms (history: {} bytes + new: {} bytes)",
-                  latency, existing_history.len(), new_code.len());
+        eprintln!(
+            "[.cell] .syn replay OK: {:.2}ms (history: {} bytes + new: {} bytes)",
+            latency,
+            existing_history.len(),
+            new_code.len()
+        );
 
         let final_stdout = if new_stdout.is_empty() && !raw_stdout.is_empty() {
             // If new code produced no output but result exists, show result
@@ -3250,7 +3917,8 @@ impl CellManager {
     /// Update the cell's inactivity timeout. Reaper already checks timeout_ms.
     pub fn set_timeout(&self, cell_id: &str, timeout_ms: u64) -> Result<(), String> {
         let mut cells = self.cells.write().map_err(|e| e.to_string())?;
-        let cell = cells.get_mut(cell_id)
+        let cell = cells
+            .get_mut(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
         if cell.info.status != CellStatus::Running {
             return Err(format!("Cell {} is not running", cell_id));
@@ -3266,7 +3934,8 @@ impl CellManager {
             .unwrap_or_default()
             .as_millis() as u64;
         let mut cells = self.cells.write().map_err(|e| e.to_string())?;
-        let cell = cells.get_mut(cell_id)
+        let cell = cells
+            .get_mut(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
         cell.info.last_active_ms = Some(now);
         Ok(now)
@@ -3279,7 +3948,8 @@ impl CellManager {
         patch: HashMap<String, String>,
     ) -> Result<HashMap<String, String>, String> {
         let mut cells = self.cells.write().map_err(|e| e.to_string())?;
-        let cell = cells.get_mut(cell_id)
+        let cell = cells
+            .get_mut(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
         for (k, v) in patch {
             cell.info.metadata.insert(k, v);
@@ -3294,7 +3964,8 @@ impl CellManager {
         config: serde_json::Value,
     ) -> Result<(), String> {
         let mut cells = self.cells.write().map_err(|e| e.to_string())?;
-        let cell = cells.get_mut(cell_id)
+        let cell = cells
+            .get_mut(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
         cell.info.network = Some(config);
         Ok(())
@@ -3303,7 +3974,8 @@ impl CellManager {
     /// Return the cell's current environment variable map.
     pub fn get_envs(&self, cell_id: &str) -> Result<HashMap<String, String>, String> {
         let cells = self.cells.read().map_err(|e| e.to_string())?;
-        let cell = cells.get(cell_id)
+        let cell = cells
+            .get(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
         Ok(cell.info.envs.clone())
     }
@@ -3315,7 +3987,8 @@ impl CellManager {
         patch: HashMap<String, String>,
     ) -> Result<HashMap<String, String>, String> {
         let mut cells = self.cells.write().map_err(|e| e.to_string())?;
-        let cell = cells.get_mut(cell_id)
+        let cell = cells
+            .get_mut(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
         for (k, v) in patch {
             cell.info.envs.insert(k, v);
@@ -3335,8 +4008,12 @@ impl CellManager {
         &self,
         mut query: ListQuery,
     ) -> Result<(Vec<CellInfo>, Option<String>), String> {
-        if query.limit == 0 { query.limit = 100; }
-        if query.limit > 500 { query.limit = 500; }
+        if query.limit == 0 {
+            query.limit = 100;
+        }
+        if query.limit > 500 {
+            query.limit = 500;
+        }
         if query.states.is_empty() {
             query.states = vec![CellStatus::Running, CellStatus::Paused];
         }
@@ -3344,37 +4021,48 @@ impl CellManager {
         let cells = self.cells.read().unwrap_or_else(|e| e.into_inner());
 
         // Collect matching items
-        let mut items: Vec<CellInfo> = cells.values()
+        let mut items: Vec<CellInfo> = cells
+            .values()
             .map(|c| &c.info)
             .filter(|info| query.states.iter().any(|s| s == &info.status))
             .filter(|info| {
-                query.metadata.iter().all(|(k, v)|
-                    info.metadata.get(k) == Some(v))
+                query
+                    .metadata
+                    .iter()
+                    .all(|(k, v)| info.metadata.get(k) == Some(v))
             })
             .cloned()
             .collect();
 
         // Deterministic order: (created_at ASC, cell_id ASC)
         items.sort_by(|a, b| {
-            a.created_at.cmp(&b.created_at).then_with(|| a.cell_id.cmp(&b.cell_id))
+            a.created_at
+                .cmp(&b.created_at)
+                .then_with(|| a.cell_id.cmp(&b.cell_id))
         });
 
         // Resume from next_token
         let start_idx = if let Some(ref token) = query.next_token {
-            let (last_ca, last_id) = decode_next_token(token)
-                .map_err(|e| format!("invalid next_token: {}", e))?;
-            items.iter().position(|c|
-                (c.created_at, c.cell_id.as_str()) > (last_ca, last_id.as_str())
-            ).unwrap_or(items.len())
-        } else { 0 };
+            let (last_ca, last_id) =
+                decode_next_token(token).map_err(|e| format!("invalid next_token: {}", e))?;
+            items
+                .iter()
+                .position(|c| (c.created_at, c.cell_id.as_str()) > (last_ca, last_id.as_str()))
+                .unwrap_or(items.len())
+        } else {
+            0
+        };
 
         let end_idx = (start_idx + query.limit).min(items.len());
         let has_more = end_idx < items.len();
         let page = items[start_idx..end_idx].to_vec();
 
         let next_token = if has_more {
-            page.last().map(|c| encode_next_token(c.created_at, &c.cell_id))
-        } else { None };
+            page.last()
+                .map(|c| encode_next_token(c.created_at, &c.cell_id))
+        } else {
+            None
+        };
 
         Ok((page, next_token))
     }
@@ -3397,7 +4085,8 @@ impl CellManager {
     /// File operations: write a file to a cell's data directory
     pub fn write_file(&self, cell_id: &str, path: &str, data: &[u8]) -> Result<(), String> {
         let cells = self.cells.read().map_err(|e| e.to_string())?;
-        let cell = cells.get(cell_id)
+        let cell = cells
+            .get(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
 
         // Sanitize path — prevent directory traversal
@@ -3414,14 +4103,14 @@ impl CellManager {
                 .map_err(|e| format!("Failed to create directory: {}", e))?;
         }
 
-        std::fs::write(&file_path, data)
-            .map_err(|e| format!("Failed to write file: {}", e))
+        std::fs::write(&file_path, data).map_err(|e| format!("Failed to write file: {}", e))
     }
 
     /// File operations: read a file from a cell's data directory
     pub fn read_file(&self, cell_id: &str, path: &str) -> Result<Vec<u8>, String> {
         let cells = self.cells.read().map_err(|e| e.to_string())?;
-        let cell = cells.get(cell_id)
+        let cell = cells
+            .get(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
 
         let clean_path = path.trim_start_matches('/');
@@ -3430,15 +4119,15 @@ impl CellManager {
         }
 
         let file_path = cell.data_path.join(clean_path);
-        std::fs::read(&file_path)
-            .map_err(|e| format!("Failed to read file: {}", e))
+        std::fs::read(&file_path).map_err(|e| format!("Failed to read file: {}", e))
     }
 
     /// File operations: list files in a cell's data directory.
     /// Returns Vec<FileEntryInfo> with full metadata (E2B EntryInfo parity).
     pub fn list_files(&self, cell_id: &str, path: &str) -> Result<Vec<FileEntryInfo>, String> {
         let cells = self.cells.read().map_err(|e| e.to_string())?;
-        let cell = cells.get(cell_id)
+        let cell = cells
+            .get(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
 
         let clean_path = path.trim_start_matches('/');
@@ -3466,7 +4155,8 @@ impl CellManager {
     /// Check if a file or directory exists in a cell's data directory.
     pub fn file_exists(&self, cell_id: &str, path: &str) -> Result<bool, String> {
         let cells = self.cells.read().map_err(|e| e.to_string())?;
-        let cell = cells.get(cell_id)
+        let cell = cells
+            .get(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
         let clean_path = path.trim_start_matches('/');
         if clean_path.contains("..") {
@@ -3479,7 +4169,8 @@ impl CellManager {
     /// Get metadata about a file or directory in a cell.
     pub fn file_info(&self, cell_id: &str, path: &str) -> Result<FileEntryInfo, String> {
         let cells = self.cells.read().map_err(|e| e.to_string())?;
-        let cell = cells.get(cell_id)
+        let cell = cells
+            .get(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
         let clean_path = path.trim_start_matches('/');
         if clean_path.contains("..") {
@@ -3493,7 +4184,8 @@ impl CellManager {
     /// Directories are removed recursively (like rm -rf).
     pub fn remove_file(&self, cell_id: &str, path: &str) -> Result<(), String> {
         let cells = self.cells.read().map_err(|e| e.to_string())?;
-        let cell = cells.get(cell_id)
+        let cell = cells
+            .get(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
         let clean_path = path.trim_start_matches('/');
         if clean_path.is_empty() {
@@ -3510,15 +4202,15 @@ impl CellManager {
             std::fs::remove_dir_all(&file_path)
                 .map_err(|e| format!("Failed to remove directory: {}", e))
         } else {
-            std::fs::remove_file(&file_path)
-                .map_err(|e| format!("Failed to remove file: {}", e))
+            std::fs::remove_file(&file_path).map_err(|e| format!("Failed to remove file: {}", e))
         }
     }
 
     /// Create a directory (and parent directories) in a cell.
     pub fn make_dir(&self, cell_id: &str, path: &str) -> Result<(), String> {
         let cells = self.cells.read().map_err(|e| e.to_string())?;
-        let cell = cells.get(cell_id)
+        let cell = cells
+            .get(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
         let clean_path = path.trim_start_matches('/');
         if clean_path.is_empty() {
@@ -3528,15 +4220,20 @@ impl CellManager {
             return Err("Path traversal not allowed".into());
         }
         let dir_path = cell.data_path.join(clean_path);
-        std::fs::create_dir_all(&dir_path)
-            .map_err(|e| format!("Failed to create directory: {}", e))
+        std::fs::create_dir_all(&dir_path).map_err(|e| format!("Failed to create directory: {}", e))
     }
 
     /// Rename/move a file or directory within a cell's data directory.
     /// Both old_path and new_path must stay inside the cell's data sandbox.
-    pub fn rename_file(&self, cell_id: &str, old_path: &str, new_path: &str) -> Result<FileEntryInfo, String> {
+    pub fn rename_file(
+        &self,
+        cell_id: &str,
+        old_path: &str,
+        new_path: &str,
+    ) -> Result<FileEntryInfo, String> {
         let cells = self.cells.read().map_err(|e| e.to_string())?;
-        let cell = cells.get(cell_id)
+        let cell = cells
+            .get(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
         let clean_old = old_path.trim_start_matches('/');
         let clean_new = new_path.trim_start_matches('/');
@@ -3553,30 +4250,34 @@ impl CellManager {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create parent directory: {}", e))?;
         }
-        std::fs::rename(&old_full, &new_full)
-            .map_err(|e| format!("Failed to rename: {}", e))?;
+        std::fs::rename(&old_full, &new_full).map_err(|e| format!("Failed to rename: {}", e))?;
         metadata_to_entry_info(&new_full, &cell.data_path)
     }
 
     /// Snapshot: save cell state to disk
     pub fn snapshot_cell(&self, cell_id: &str) -> Result<String, String> {
         let snap_id = format!("snap-{}", Uuid::new_v4());
-        
+
         let (data_path, is_persistent, template) = {
             let cells = self.cells.read().map_err(|e| e.to_string())?;
-            let cell = cells.get(cell_id)
+            let cell = cells
+                .get(cell_id)
                 .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
-            (cell.data_path.clone(), cell.info.persistent, cell.info.template.clone())
+            (
+                cell.data_path.clone(),
+                cell.info.persistent,
+                cell.info.template.clone(),
+            )
         };
 
         // Holy Grail: Trigger Live Background Wasm Worker to serialize memory state natively!
         if is_persistent && matches!(template.as_str(), "python3" | "python") {
             let req_path = data_path.join("__req__.py");
             let res_path = data_path.join("__res__.json");
-            
+
             let _ = std::fs::remove_file(&res_path);
             let _ = std::fs::write(&req_path, "#SNAP#");
-            
+
             // Wait for snapshot ack
             let timeout = std::time::Duration::from_secs(10);
             let poll_start = std::time::Instant::now();
@@ -3593,7 +4294,11 @@ impl CellManager {
         let cell = cells.get(cell_id).unwrap();
 
         // Save the cell info + data directory contents (which now includes __snapshot__.pkl)
-        let snap_dir = self.cells_root.join(cell_id).join("snapshots").join(&snap_id);
+        let snap_dir = self
+            .cells_root
+            .join(cell_id)
+            .join("snapshots")
+            .join(&snap_id);
         std::fs::create_dir_all(&snap_dir)
             .map_err(|e| format!("Failed to create snapshot dir: {}", e))?;
 
@@ -3618,15 +4323,12 @@ impl CellManager {
 
     /// Start a real OS subprocess in the background. Returns the command_id
     /// immediately. A monitor thread captures stdout/stderr and exit_code.
-    pub fn start_background_command(
-        &self,
-        cell_id: &str,
-        command: &str,
-    ) -> Result<String, String> {
+    pub fn start_background_command(&self, cell_id: &str, command: &str) -> Result<String, String> {
         // Get cell data_path for the working directory
         let data_path = {
             let cells = self.cells.read().map_err(|e| e.to_string())?;
-            let cell = cells.get(cell_id)
+            let cell = cells
+                .get(cell_id)
                 .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
             cell.data_path.clone()
         };
@@ -3673,8 +4375,12 @@ impl CellManager {
                 .spawn(move || {
                     use std::io::Write;
                     while let Ok(data) = stdin_rx.recv() {
-                        if stdin_pipe.write_all(&data).is_err() { break; }
-                        if stdin_pipe.flush().is_err() { break; }
+                        if stdin_pipe.write_all(&data).is_err() {
+                            break;
+                        }
+                        if stdin_pipe.flush().is_err() {
+                            break;
+                        }
                     }
                 })
                 .ok();
@@ -3692,7 +4398,9 @@ impl CellManager {
                         match line {
                             Ok(l) => {
                                 if let Ok(mut buf) = out_buf.lock() {
-                                    if !buf.is_empty() { buf.push('\n'); }
+                                    if !buf.is_empty() {
+                                        buf.push('\n');
+                                    }
                                     buf.push_str(&l);
                                 }
                             }
@@ -3715,7 +4423,9 @@ impl CellManager {
                         match line {
                             Ok(l) => {
                                 if let Ok(mut buf) = err_buf.lock() {
-                                    if !buf.is_empty() { buf.push('\n'); }
+                                    if !buf.is_empty() {
+                                        buf.push('\n');
+                                    }
                                     buf.push_str(&l);
                                 }
                             }
@@ -3751,7 +4461,13 @@ impl CellManager {
                     *ec = Some(code);
                 }
                 mon_running.store(false, std::sync::atomic::Ordering::Release);
-                if std::env::var("CELL_VERBOSE").is_ok() { eprintln!("[.cell] Process {} exited with code {}", &mon_cid[..8], code); }
+                if std::env::var("CELL_VERBOSE").is_ok() {
+                    eprintln!(
+                        "[.cell] Process {} exited with code {}",
+                        &mon_cid[..8],
+                        code
+                    );
+                }
             })
             .ok();
 
@@ -3776,17 +4492,23 @@ impl CellManager {
 
         // Also insert a "running" entry into the legacy registry for backward compat
         {
-            let mut bg = self.background_commands.write().map_err(|e| e.to_string())?;
-            bg.insert(command_id.clone(), BackgroundCommand {
-                command_id: command_id.clone(),
-                cell_id: cell_id.to_string(),
-                command: command.to_string(),
-                status: "running".to_string(),
-                stdout: String::new(),
-                stderr: String::new(),
-                exit_code: None,
-                pid: Some(pid),
-            });
+            let mut bg = self
+                .background_commands
+                .write()
+                .map_err(|e| e.to_string())?;
+            bg.insert(
+                command_id.clone(),
+                BackgroundCommand {
+                    command_id: command_id.clone(),
+                    cell_id: cell_id.to_string(),
+                    command: command.to_string(),
+                    status: "running".to_string(),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    exit_code: None,
+                    pid: Some(pid),
+                },
+            );
         }
 
         Ok(command_id)
@@ -3845,7 +4567,10 @@ impl CellManager {
             }
         }
         // Fall back to legacy registry
-        let mut bg = self.background_commands.write().map_err(|e| e.to_string())?;
+        let mut bg = self
+            .background_commands
+            .write()
+            .map_err(|e| e.to_string())?;
         bg.remove(command_id)
             .map(|_| ())
             .ok_or_else(|| format!("Command not found: {}", command_id))
@@ -3865,7 +4590,8 @@ impl CellManager {
         // Legacy completed commands not in running_processes
         if let Ok(bg) = self.background_commands.read() {
             for cmd in bg.values() {
-                if cmd.cell_id == cell_id && !result.iter().any(|r| r.command_id == cmd.command_id) {
+                if cmd.cell_id == cell_id && !result.iter().any(|r| r.command_id == cmd.command_id)
+                {
                     result.push(cmd.clone());
                 }
             }
@@ -3881,14 +4607,17 @@ impl CellManager {
     /// Send data to a process's stdin.
     pub fn send_stdin(&self, command_id: &str, data: Vec<u8>) -> Result<(), String> {
         let procs = self.running_processes.read().map_err(|e| e.to_string())?;
-        let p = procs.get(command_id)
+        let p = procs
+            .get(command_id)
             .ok_or_else(|| format!("Process not found: {}", command_id))?;
         if !p.running.load(std::sync::atomic::Ordering::Acquire) {
             return Err(format!("Process {} is not running", command_id));
         }
         let tx = p.stdin_tx.lock().map_err(|e| e.to_string())?;
         if let Some(ref sender) = *tx {
-            sender.send(data).map_err(|e| format!("stdin send failed: {}", e))?;
+            sender
+                .send(data)
+                .map_err(|e| format!("stdin send failed: {}", e))?;
         } else {
             return Err("stdin pipe not available".to_string());
         }
@@ -3908,10 +4637,14 @@ impl CellManager {
 
         let data_path = {
             let mut cells = self.cells.write().map_err(|e| e.to_string())?;
-            let cell = cells.get_mut(cell_id)
+            let cell = cells
+                .get_mut(cell_id)
                 .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
             if cell.info.status != CellStatus::Running {
-                return Err(format!("Cell {} is not running (status: {:?})", cell_id, cell.info.status));
+                return Err(format!(
+                    "Cell {} is not running (status: {:?})",
+                    cell_id, cell.info.status
+                ));
             }
             cell.info.status = CellStatus::Paused;
             cell.data_path.clone()
@@ -3940,9 +4673,14 @@ impl CellManager {
         std::fs::write(
             snap_root.join(format!("{}.json", &snapshot_id)),
             manifest.to_string(),
-        ).map_err(|e| format!("Manifest write failed: {}", e))?;
+        )
+        .map_err(|e| format!("Manifest write failed: {}", e))?;
 
-        eprintln!("[.cell] Cell {} paused, snapshot {}", &cell_id[..8], &snapshot_id[..8]);
+        eprintln!(
+            "[.cell] Cell {} paused, snapshot {}",
+            &cell_id[..8],
+            &snapshot_id[..8]
+        );
         Ok(snapshot_id)
     }
 
@@ -3953,10 +4691,14 @@ impl CellManager {
             .unwrap_or_default()
             .as_millis() as u64;
         let mut cells = self.cells.write().map_err(|e| e.to_string())?;
-        let cell = cells.get_mut(cell_id)
+        let cell = cells
+            .get_mut(cell_id)
             .ok_or_else(|| format!("Cell not found: {}", cell_id))?;
         if cell.info.status != CellStatus::Paused {
-            return Err(format!("Cell {} is not paused (status: {:?})", cell_id, cell.info.status));
+            return Err(format!(
+                "Cell {} is not paused (status: {:?})",
+                cell_id, cell.info.status
+            ));
         }
         cell.info.status = CellStatus::Running;
         cell.info.last_active_ms = Some(now);
@@ -4010,43 +4752,50 @@ impl CellManager {
         if snap_data.is_dir() {
             let _ = std::fs::remove_dir_all(&snap_data);
         }
-        std::fs::remove_file(&snap_path)
-            .map_err(|e| format!("Failed to delete snapshot: {}", e))
+        std::fs::remove_file(&snap_path).map_err(|e| format!("Failed to delete snapshot: {}", e))
     }
 
     /// Close the stdin pipe of a running process, signaling EOF.
     pub fn close_process_stdin(&self, command_id: &str) -> Result<(), String> {
-        let procs = self.running_processes.read()
-            .map_err(|e| e.to_string())?;
-        let proc = procs.get(command_id)
+        let procs = self.running_processes.read().map_err(|e| e.to_string())?;
+        let proc = procs
+            .get(command_id)
             .ok_or_else(|| format!("Process not found: {}", command_id))?;
         // Drop the sender to close the stdin pipe
-        let mut tx_lock = proc.stdin_tx.lock()
-            .map_err(|e| e.to_string())?;
+        let mut tx_lock = proc.stdin_tx.lock().map_err(|e| e.to_string())?;
         *tx_lock = None;
         Ok(())
     }
 
     // ─── Volumes Core APIs (9 Endpoints) ──────────────────────────────────
-    
+
     pub fn create_volume(&self, volume_id: Option<String>) -> Result<serde_json::Value, String> {
         let vid = volume_id.unwrap_or_else(|| Uuid::new_v4().to_string());
-        let volumes_dir = self.cells_root.parent().unwrap_or(&self.cells_root).join("volumes");
+        let volumes_dir = self
+            .cells_root
+            .parent()
+            .unwrap_or(&self.cells_root)
+            .join("volumes");
         let path = volumes_dir.join(&vid);
-        
-        std::fs::create_dir_all(&path).map_err(|e| format!("Failed to create volume {}: {}", vid, e))?;
-        
+
+        std::fs::create_dir_all(&path)
+            .map_err(|e| format!("Failed to create volume {}: {}", vid, e))?;
+
         // E2B Shape compliance
         Ok(serde_json::json!({
             "volume_id": vid,
             "created_at": CellInfo::ms_to_iso8601(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64)
         }))
     }
-    
+
     pub fn list_volumes(&self) -> Result<Vec<serde_json::Value>, String> {
-        let volumes_dir = self.cells_root.parent().unwrap_or(&self.cells_root).join("volumes");
+        let volumes_dir = self
+            .cells_root
+            .parent()
+            .unwrap_or(&self.cells_root)
+            .join("volumes");
         let mut results = Vec::new();
-        
+
         if let Ok(entries) = std::fs::read_dir(volumes_dir) {
             for entry in entries.flatten() {
                 if let Ok(meta) = entry.metadata() {
@@ -4064,14 +4813,18 @@ impl CellManager {
                 }
             }
         }
-        
+
         Ok(results)
     }
-    
+
     pub fn get_volume(&self, volume_id: &str) -> Result<serde_json::Value, String> {
-        let volumes_dir = self.cells_root.parent().unwrap_or(&self.cells_root).join("volumes");
+        let volumes_dir = self
+            .cells_root
+            .parent()
+            .unwrap_or(&self.cells_root)
+            .join("volumes");
         let path = volumes_dir.join(volume_id);
-        
+
         if path.is_dir() {
             let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
             Ok(serde_json::json!({
@@ -4082,18 +4835,29 @@ impl CellManager {
                     .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
             }))
         } else {
-            Err(format!("Volume not found or is not a directory: {}", volume_id))
+            Err(format!(
+                "Volume not found or is not a directory: {}",
+                volume_id
+            ))
         }
     }
-    
+
     pub fn delete_volume(&self, volume_id: &str) -> Result<(), String> {
-        let volumes_dir = self.cells_root.parent().unwrap_or(&self.cells_root).join("volumes");
+        let volumes_dir = self
+            .cells_root
+            .parent()
+            .unwrap_or(&self.cells_root)
+            .join("volumes");
         let path = volumes_dir.join(volume_id);
-        
+
         if path.is_dir() {
             // Check if there is an active lock! (Advisory check: try to achieve an exclusive lock, if fails, it's mounted!)
             let lock_file_path = path.join(".synapse_volume.lock");
-            if let Ok(f) = std::fs::OpenOptions::new().read(true).write(true).open(&lock_file_path) {
+            if let Ok(f) = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&lock_file_path)
+            {
                 #[cfg(unix)]
                 {
                     use std::os::unix::io::AsRawFd;
@@ -4102,40 +4866,54 @@ impl CellManager {
                     }
                 }
             }
-            std::fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete volume: {}", e))?;
+            std::fs::remove_dir_all(&path)
+                .map_err(|e| format!("Failed to delete volume: {}", e))?;
             Ok(())
         } else {
             Err(format!("Volume not found: {}", volume_id))
         }
     }
-    
+
     // File I/O within a Volume
     pub fn read_volume_file(&self, volume_id: &str, file_path: &str) -> Result<Vec<u8>, String> {
-        let volumes_dir = self.cells_root.parent().unwrap_or(&self.cells_root).join("volumes");
+        let volumes_dir = self
+            .cells_root
+            .parent()
+            .unwrap_or(&self.cells_root)
+            .join("volumes");
         let base_path = volumes_dir.join(volume_id);
         let target = base_path.join(file_path.trim_start_matches('/'));
-        
+
         // Security check
         if let Ok(canon_target) = std::fs::canonicalize(&target) {
             if !canon_target.starts_with(std::fs::canonicalize(&base_path).unwrap_or(base_path)) {
                 return Err("Path traversal blocked".into());
             }
         }
-        
+
         std::fs::read(&target).map_err(|e| format!("Failed to read file: {}", e))
     }
-    
-    pub fn write_volume_file(&self, volume_id: &str, file_path: &str, content: &[u8]) -> Result<(), String> {
-        let volumes_dir = self.cells_root.parent().unwrap_or(&self.cells_root).join("volumes");
+
+    pub fn write_volume_file(
+        &self,
+        volume_id: &str,
+        file_path: &str,
+        content: &[u8],
+    ) -> Result<(), String> {
+        let volumes_dir = self
+            .cells_root
+            .parent()
+            .unwrap_or(&self.cells_root)
+            .join("volumes");
         let base_path = volumes_dir.join(volume_id);
         let target = base_path.join(file_path.trim_start_matches('/'));
-        
+
         std::fs::create_dir_all(&base_path).ok();
-        
+
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).unwrap_or_default();
         }
-        
+
         std::fs::write(&target, content).map_err(|e| format!("Failed to write file: {}", e))
     }
 }

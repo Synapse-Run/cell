@@ -63,7 +63,8 @@ impl Transpiler {
     }
 
     fn get_var(&self, name: &str) -> Result<String, String> {
-        self.var_map.get(name)
+        self.var_map
+            .get(name)
             .map(|idx| format!("${}", idx))
             .ok_or_else(|| format!("Undefined variable: {}", name))
     }
@@ -98,8 +99,8 @@ enum PyTok {
     Name(String),
     Int(i64),
     Float(f64),
-    Str(String),           // string literal content
-    FStr(Vec<FStrPart>),   // f-string parts
+    Str(String),         // string literal content
+    FStr(Vec<FStrPart>), // f-string parts
     Op(String),
     Punct(char),
     Newline,
@@ -148,7 +149,9 @@ impl PyLexer {
             // Track indentation at start of line
             if line_start && (ch == ' ' || ch == '\t') {
                 let mut indent = 0;
-                while self.pos < self.chars.len() && (self.chars[self.pos] == ' ' || self.chars[self.pos] == '\t') {
+                while self.pos < self.chars.len()
+                    && (self.chars[self.pos] == ' ' || self.chars[self.pos] == '\t')
+                {
                     indent += if self.chars[self.pos] == '\t' { 4 } else { 1 };
                     self.pos += 1;
                 }
@@ -181,7 +184,8 @@ impl PyLexer {
             }
 
             // f-strings: f"..." or f'...'
-            if ch == 'f' && self.pos + 1 < self.chars.len()
+            if ch == 'f'
+                && self.pos + 1 < self.chars.len()
                 && (self.chars[self.pos + 1] == '"' || self.chars[self.pos + 1] == '\'')
             {
                 self.pos += 1; // skip 'f'
@@ -199,7 +203,16 @@ impl PyLexer {
             }
 
             // Numbers
-            if ch.is_ascii_digit() || (ch == '-' && self.pos + 1 < self.chars.len() && self.chars[self.pos + 1].is_ascii_digit() && (result.is_empty() || matches!(result.last(), Some(PyTok::Op(_)) | Some(PyTok::Punct('(')) | Some(PyTok::Punct(','))))) {
+            if ch.is_ascii_digit()
+                || (ch == '-'
+                    && self.pos + 1 < self.chars.len()
+                    && self.chars[self.pos + 1].is_ascii_digit()
+                    && (result.is_empty()
+                        || matches!(
+                            result.last(),
+                            Some(PyTok::Op(_)) | Some(PyTok::Punct('(')) | Some(PyTok::Punct(','))
+                        )))
+            {
                 let num = self.lex_number();
                 if num.contains('.') {
                     result.push(PyTok::Float(num.parse().unwrap_or(0.0)));
@@ -218,8 +231,11 @@ impl PyLexer {
 
             // Multi-char operators
             if self.pos + 1 < self.chars.len() {
-                let two: String = self.chars[self.pos..self.pos+2].iter().collect();
-                if matches!(two.as_str(), "==" | "!=" | ">=" | "<=" | "+=" | "-=" | "*=" | "//") {
+                let two: String = self.chars[self.pos..self.pos + 2].iter().collect();
+                if matches!(
+                    two.as_str(),
+                    "==" | "!=" | ">=" | "<=" | "+=" | "-=" | "*=" | "//"
+                ) {
                     self.pos += 2;
                     result.push(PyTok::Op(two));
                     continue;
@@ -236,7 +252,9 @@ impl PyLexer {
                     self.pos += 1;
                     result.push(PyTok::Punct(ch));
                 }
-                _ => { self.pos += 1; } // skip unknown
+                _ => {
+                    self.pos += 1;
+                } // skip unknown
             }
         }
 
@@ -256,14 +274,19 @@ impl PyLexer {
                     '\\' => s.push('\\'),
                     '\'' => s.push('\''),
                     '"' => s.push('"'),
-                    c => { s.push('\\'); s.push(c); }
+                    c => {
+                        s.push('\\');
+                        s.push(c);
+                    }
                 }
             } else {
                 s.push(self.chars[self.pos]);
             }
             self.pos += 1;
         }
-        if self.pos < self.chars.len() { self.pos += 1; } // skip closing quote
+        if self.pos < self.chars.len() {
+            self.pos += 1;
+        } // skip closing quote
         s
     }
 
@@ -280,12 +303,21 @@ impl PyLexer {
                 let mut expr = String::new();
                 let mut depth = 1;
                 while self.pos < self.chars.len() && depth > 0 {
-                    if self.chars[self.pos] == '{' { depth += 1; }
-                    if self.chars[self.pos] == '}' { depth -= 1; if depth == 0 { break; } }
+                    if self.chars[self.pos] == '{' {
+                        depth += 1;
+                    }
+                    if self.chars[self.pos] == '}' {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
                     expr.push(self.chars[self.pos]);
                     self.pos += 1;
                 }
-                if self.pos < self.chars.len() { self.pos += 1; } // skip }
+                if self.pos < self.chars.len() {
+                    self.pos += 1;
+                } // skip }
                 parts.push(FStrPart::Expr(expr));
             } else if self.chars[self.pos] == '\\' && self.pos + 1 < self.chars.len() {
                 self.pos += 1;
@@ -303,7 +335,9 @@ impl PyLexer {
         if !current_lit.is_empty() {
             parts.push(FStrPart::Lit(current_lit));
         }
-        if self.pos < self.chars.len() { self.pos += 1; } // skip closing quote
+        if self.pos < self.chars.len() {
+            self.pos += 1;
+        } // skip closing quote
         parts
     }
 
@@ -313,7 +347,9 @@ impl PyLexer {
             num.push('-');
             self.pos += 1;
         }
-        while self.pos < self.chars.len() && (self.chars[self.pos].is_ascii_digit() || self.chars[self.pos] == '.') {
+        while self.pos < self.chars.len()
+            && (self.chars[self.pos].is_ascii_digit() || self.chars[self.pos] == '.')
+        {
             num.push(self.chars[self.pos]);
             self.pos += 1;
         }
@@ -322,7 +358,9 @@ impl PyLexer {
 
     fn lex_name(&mut self) -> String {
         let mut name = String::new();
-        while self.pos < self.chars.len() && (self.chars[self.pos].is_ascii_alphanumeric() || self.chars[self.pos] == '_') {
+        while self.pos < self.chars.len()
+            && (self.chars[self.pos].is_ascii_alphanumeric() || self.chars[self.pos] == '_')
+        {
             name.push(self.chars[self.pos]);
             self.pos += 1;
         }
@@ -335,9 +373,9 @@ impl PyLexer {
 
 #[derive(Debug)]
 enum PyStmt {
-    Assign(String, PyExpr),       // name = expr
+    Assign(String, PyExpr),            // name = expr
     AugAssign(String, String, PyExpr), // name += expr
-    Expr(PyExpr),                 // bare expression
+    Expr(PyExpr),                      // bare expression
     If(PyExpr, Vec<PyStmt>, Vec<PyStmt>),
     While(PyExpr, Vec<PyStmt>),
     For(String, PyExpr, PyExpr, Vec<PyStmt>), // for var in range(start, end): body
@@ -402,8 +440,14 @@ impl PyParser {
         self.skip_newlines();
         while !matches!(self.peek(), PyTok::Eof) {
             // Skip indentation at top level
-            if let PyTok::Indent(_) = self.peek() { self.advance(); continue; }
-            if matches!(self.peek(), PyTok::Newline) { self.advance(); continue; }
+            if let PyTok::Indent(_) = self.peek() {
+                self.advance();
+                continue;
+            }
+            if matches!(self.peek(), PyTok::Newline) {
+                self.advance();
+                continue;
+            }
 
             let stmt = self.parse_stmt(0)?;
             stmts.push(stmt);
@@ -417,14 +461,17 @@ impl PyParser {
             PyTok::Name(ref name) if name == "if" => self.parse_if(),
             PyTok::Name(ref name) if name == "while" => self.parse_while(),
             PyTok::Name(ref name) if name == "for" => self.parse_for(),
-            PyTok::Name(ref name) if name == "pass" => { self.advance(); Ok(PyStmt::Pass) },
+            PyTok::Name(ref name) if name == "pass" => {
+                self.advance();
+                Ok(PyStmt::Pass)
+            }
             PyTok::Name(ref name) if name == "import" || name == "from" => {
                 // Skip import statements (consumed but not translated to .syn)
                 while !matches!(self.peek(), PyTok::Newline | PyTok::Eof) {
                     self.advance();
                 }
                 Ok(PyStmt::Pass)
-            },
+            }
             _ => {
                 let expr = self.parse_expr()?;
                 // Check for assignment
@@ -443,7 +490,8 @@ impl PyParser {
                             "-=" => "-",
                             "*=" => "*",
                             _ => return Err(format!("Unsupported aug-assign: {}", op)),
-                        }.to_string();
+                        }
+                        .to_string();
                         self.advance();
                         if let PyExpr::Name(name) = expr {
                             let value = self.parse_expr()?;
@@ -464,7 +512,6 @@ impl PyParser {
 
         // Determine block indent level
         let block_indent = if let PyTok::Indent(n) = self.peek() {
-            
             *n
         } else {
             // Single-line block
@@ -537,8 +584,11 @@ impl PyParser {
 
     fn parse_for(&mut self) -> Result<PyStmt, String> {
         self.advance(); // consume 'for'
-        let var = if let PyTok::Name(name) = self.advance() { name }
-                  else { return Err("Expected variable name in for loop".into()); };
+        let var = if let PyTok::Name(name) = self.advance() {
+            name
+        } else {
+            return Err("Expected variable name in for loop".into());
+        };
 
         // expect 'in'
         if !matches!(self.advance(), PyTok::Name(ref n) if n == "in") {
@@ -660,8 +710,11 @@ impl PyParser {
             match self.peek() {
                 PyTok::Punct('.') => {
                     self.advance(); // consume '.'
-                    let method = if let PyTok::Name(name) = self.advance() { name }
-                                 else { return Err("Expected method name after '.'".into()); };
+                    let method = if let PyTok::Name(name) = self.advance() {
+                        name
+                    } else {
+                        return Err("Expected method name after '.'".into());
+                    };
                     self.expect_punct('(')?;
                     let args = self.parse_arg_list()?;
                     self.expect_punct(')')?;
@@ -692,13 +745,34 @@ impl PyParser {
 
     fn parse_atom(&mut self) -> Result<PyExpr, String> {
         match self.peek().clone() {
-            PyTok::Int(n) => { self.advance(); Ok(PyExpr::IntLit(n)) }
-            PyTok::Float(f) => { self.advance(); Ok(PyExpr::FloatLit(f)) }
-            PyTok::Str(s) => { self.advance(); Ok(PyExpr::StrLit(s)) }
-            PyTok::FStr(parts) => { self.advance(); Ok(PyExpr::FString(parts)) }
-            PyTok::Name(ref name) if name == "True" => { self.advance(); Ok(PyExpr::IntLit(1)) }
-            PyTok::Name(ref name) if name == "False" => { self.advance(); Ok(PyExpr::IntLit(0)) }
-            PyTok::Name(name) => { self.advance(); Ok(PyExpr::Name(name)) }
+            PyTok::Int(n) => {
+                self.advance();
+                Ok(PyExpr::IntLit(n))
+            }
+            PyTok::Float(f) => {
+                self.advance();
+                Ok(PyExpr::FloatLit(f))
+            }
+            PyTok::Str(s) => {
+                self.advance();
+                Ok(PyExpr::StrLit(s))
+            }
+            PyTok::FStr(parts) => {
+                self.advance();
+                Ok(PyExpr::FString(parts))
+            }
+            PyTok::Name(ref name) if name == "True" => {
+                self.advance();
+                Ok(PyExpr::IntLit(1))
+            }
+            PyTok::Name(ref name) if name == "False" => {
+                self.advance();
+                Ok(PyExpr::IntLit(0))
+            }
+            PyTok::Name(name) => {
+                self.advance();
+                Ok(PyExpr::Name(name))
+            }
             PyTok::Punct('(') => {
                 self.advance();
                 let expr = self.parse_expr()?;
@@ -711,11 +785,15 @@ impl PyParser {
 
     fn parse_arg_list(&mut self) -> Result<Vec<PyExpr>, String> {
         let mut args = Vec::new();
-        if matches!(self.peek(), PyTok::Punct(')')) { return Ok(args); }
+        if matches!(self.peek(), PyTok::Punct(')')) {
+            return Ok(args);
+        }
         args.push(self.parse_expr()?);
         while matches!(self.peek(), PyTok::Punct(',')) {
             self.advance();
-            if matches!(self.peek(), PyTok::Punct(')')) { break; }
+            if matches!(self.peek(), PyTok::Punct(')')) {
+                break;
+            }
             args.push(self.parse_expr()?);
         }
         Ok(args)
@@ -735,7 +813,13 @@ fn emit_typed_expr(t: &mut Transpiler, expr: &PyExpr) -> Result<(String, PyType)
             // Check if all literal
             let all_lit = parts.iter().all(|p| matches!(p, FStrPart::Lit(_)));
             if all_lit {
-                let full: String = parts.iter().map(|p| match p { FStrPart::Lit(s) => s.as_str(), _ => "" }).collect();
+                let full: String = parts
+                    .iter()
+                    .map(|p| match p {
+                        FStrPart::Lit(s) => s.as_str(),
+                        _ => "",
+                    })
+                    .collect();
                 return Ok(t.emit_string_literal(&full));
             }
 
@@ -752,7 +836,9 @@ fn emit_typed_expr(t: &mut Transpiler, expr: &PyExpr) -> Result<(String, PyType)
                         let mut lexer = PyLexer::new(expr_text);
                         let tokens = lexer.tokenize();
                         let mut parser = PyParser::new(tokens);
-                        let inner_expr = parser.parse_expr().map_err(|e| format!("f-string expr error: {}", e))?;
+                        let inner_expr = parser
+                            .parse_expr()
+                            .map_err(|e| format!("f-string expr error: {}", e))?;
                         let (code, typ) = emit_typed_expr(t, &inner_expr)?;
                         if typ == PyType::Str {
                             str_codes.push((code, PyType::Str));
@@ -786,8 +872,11 @@ fn emit_typed_expr(t: &mut Transpiler, expr: &PyExpr) -> Result<(String, PyType)
             let (code, typ) = emit_typed_expr(t, operand)?;
             match op.as_str() {
                 "-" => {
-                    if typ == PyType::F32 { Ok((format!("- 0.0 {}", code), PyType::F32)) }
-                    else { Ok((format!("- 0 {}", code), PyType::I64)) }
+                    if typ == PyType::F32 {
+                        Ok((format!("- 0.0 {}", code), PyType::F32))
+                    } else {
+                        Ok((format!("- 0 {}", code), PyType::I64))
+                    }
                 }
                 "not" => Ok((format!("== {} 0", code), PyType::I64)),
                 _ => Err(format!("Unsupported unary op: {}", op)),
@@ -801,23 +890,51 @@ fn emit_typed_expr(t: &mut Transpiler, expr: &PyExpr) -> Result<(String, PyType)
             // String concatenation
             if op == "+" && (lt == PyType::Str || rt == PyType::Str) {
                 t.needs_strings = true;
-                let lc = if lt != PyType::Str { format!("call __int_to_str {}", lc) } else { lc };
-                let rc = if rt != PyType::Str { format!("call __int_to_str {}", rc) } else { rc };
+                let lc = if lt != PyType::Str {
+                    format!("call __int_to_str {}", lc)
+                } else {
+                    lc
+                };
+                let rc = if rt != PyType::Str {
+                    format!("call __int_to_str {}", rc)
+                } else {
+                    rc
+                };
                 return Ok((format!("call __str_concat {} {}", lc, rc), PyType::Str));
             }
 
             match op.as_str() {
                 "/" => {
-                    let lc = if lt != PyType::F32 { format!("to_f32 {}", lc) } else { lc };
-                    let rc = if rt != PyType::F32 { format!("to_f32 {}", rc) } else { rc };
+                    let lc = if lt != PyType::F32 {
+                        format!("to_f32 {}", lc)
+                    } else {
+                        lc
+                    };
+                    let rc = if rt != PyType::F32 {
+                        format!("to_f32 {}", rc)
+                    } else {
+                        rc
+                    };
                     Ok((format!("/ {} {}", lc, rc), PyType::F32))
                 }
                 "//" => Ok((format!("/ {} {}", lc, rc), PyType::I64)),
                 "%" => Ok((format!("% {} {}", lc, rc), PyType::I64)),
                 "+" | "-" | "*" => {
-                    let result_type = if lt == PyType::F32 || rt == PyType::F32 { PyType::F32 } else { PyType::I64 };
-                    let lc = if result_type == PyType::F32 && lt == PyType::I64 { format!("to_f32 {}", lc) } else { lc };
-                    let rc = if result_type == PyType::F32 && rt == PyType::I64 { format!("to_f32 {}", rc) } else { rc };
+                    let result_type = if lt == PyType::F32 || rt == PyType::F32 {
+                        PyType::F32
+                    } else {
+                        PyType::I64
+                    };
+                    let lc = if result_type == PyType::F32 && lt == PyType::I64 {
+                        format!("to_f32 {}", lc)
+                    } else {
+                        lc
+                    };
+                    let rc = if result_type == PyType::F32 && rt == PyType::I64 {
+                        format!("to_f32 {}", rc)
+                    } else {
+                        rc
+                    };
                     Ok((format!("{} {} {}", op, lc, rc), result_type))
                 }
                 _ => Err(format!("Unsupported binary op: {}", op)),
@@ -836,26 +953,39 @@ fn emit_typed_expr(t: &mut Transpiler, expr: &PyExpr) -> Result<(String, PyType)
                 }
             }
             let (lc, rc) = if lt == PyType::F32 || rt == PyType::F32 {
-                (if lt == PyType::I64 { format!("to_f32 {}", lc) } else { lc },
-                 if rt == PyType::I64 { format!("to_f32 {}", rc) } else { rc })
-            } else { (lc, rc) };
+                (
+                    if lt == PyType::I64 {
+                        format!("to_f32 {}", lc)
+                    } else {
+                        lc
+                    },
+                    if rt == PyType::I64 {
+                        format!("to_f32 {}", rc)
+                    } else {
+                        rc
+                    },
+                )
+            } else {
+                (lc, rc)
+            };
             Ok((format!("{} {} {}", op, lc, rc), PyType::I64))
         }
 
         PyExpr::BoolOp(op, values) => {
-            let typed: Vec<(String, PyType)> = values.iter()
+            let typed: Vec<(String, PyType)> = values
+                .iter()
                 .map(|v| emit_typed_expr(t, v))
                 .collect::<Result<Vec<_>, _>>()?;
             let codes: Vec<String> = typed.into_iter().map(|(c, _)| c).collect();
             if op == "and" {
                 let mut result = codes.last().unwrap().clone();
-                for v in codes[..codes.len()-1].iter().rev() {
+                for v in codes[..codes.len() - 1].iter().rev() {
                     result = format!("if {} [ {} ] [ 0 ]", v, result);
                 }
                 Ok((result, PyType::I64))
             } else {
                 let mut result = codes.last().unwrap().clone();
-                for v in codes[..codes.len()-1].iter().rev() {
+                for v in codes[..codes.len() - 1].iter().rev() {
                     result = format!("if {} [ {} ] [ {} ]", v, v, result);
                 }
                 Ok((result, PyType::I64))
@@ -877,16 +1007,23 @@ fn emit_typed_expr(t: &mut Transpiler, expr: &PyExpr) -> Result<(String, PyType)
 fn emit_call(t: &mut Transpiler, name: &str, args: &[PyExpr]) -> Result<(String, PyType), String> {
     match name {
         "print" => {
-            if args.len() != 1 { return Err("print() with single argument only".into()); }
+            if args.len() != 1 {
+                return Err("print() with single argument only".into());
+            }
             let (val, typ) = emit_typed_expr(t, &args[0])?;
             match typ {
-                PyType::Str => { t.needs_strings = true; Ok((format!("call __str_print {}", val), PyType::I64)) }
+                PyType::Str => {
+                    t.needs_strings = true;
+                    Ok((format!("call __str_print {}", val), PyType::I64))
+                }
                 PyType::F32 => Ok((format!("call print_f32 {}", val), PyType::I64)),
                 _ => Ok((format!("call print_i64 {}", val), PyType::I64)),
             }
         }
         "len" => {
-            if args.len() != 1 { return Err("len() takes 1 argument".into()); }
+            if args.len() != 1 {
+                return Err("len() takes 1 argument".into());
+            }
             if let PyExpr::Name(ref n) = args[0] {
                 let vtype = t.get_var_type(n);
                 if vtype == PyType::Str {
@@ -900,37 +1037,57 @@ fn emit_call(t: &mut Transpiler, name: &str, args: &[PyExpr]) -> Result<(String,
             Err("len() only supports string variables and literals".into())
         }
         "str" => {
-            if args.len() != 1 { return Err("str() takes 1 argument".into()); }
+            if args.len() != 1 {
+                return Err("str() takes 1 argument".into());
+            }
             let (x, xt) = emit_typed_expr(t, &args[0])?;
-            if xt == PyType::Str { return Ok((x, PyType::Str)); }
+            if xt == PyType::Str {
+                return Ok((x, PyType::Str));
+            }
             t.needs_strings = true;
             Ok((format!("call __int_to_str {}", x), PyType::Str))
         }
         "int" => {
-            if args.len() != 1 { return Err("int() takes 1 argument".into()); }
+            if args.len() != 1 {
+                return Err("int() takes 1 argument".into());
+            }
             let (x, _) = emit_typed_expr(t, &args[0])?;
             Ok((x, PyType::I64))
         }
         "float" => {
-            if args.len() != 1 { return Err("float() takes 1 argument".into()); }
+            if args.len() != 1 {
+                return Err("float() takes 1 argument".into());
+            }
             let (x, xt) = emit_typed_expr(t, &args[0])?;
-            if xt == PyType::I64 { Ok((format!("to_f32 {}", x), PyType::F32)) }
-            else { Ok((x, PyType::F32)) }
+            if xt == PyType::I64 {
+                Ok((format!("to_f32 {}", x), PyType::F32))
+            } else {
+                Ok((x, PyType::F32))
+            }
         }
         "abs" => {
-            if args.len() != 1 { return Err("abs() takes 1 argument".into()); }
+            if args.len() != 1 {
+                return Err("abs() takes 1 argument".into());
+            }
             let (x, xt) = emit_typed_expr(t, &args[0])?;
             let zero = if xt == PyType::F32 { "0.0" } else { "0" };
-            Ok((format!("if > {} {} [ {} ] [ - {} {} ]", x, zero, x, zero, x), xt))
+            Ok((
+                format!("if > {} {} [ {} ] [ - {} {} ]", x, zero, x, zero, x),
+                xt,
+            ))
         }
         "min" => {
-            if args.len() != 2 { return Err("min() takes 2 arguments".into()); }
+            if args.len() != 2 {
+                return Err("min() takes 2 arguments".into());
+            }
             let (a, at) = emit_typed_expr(t, &args[0])?;
             let (b, _) = emit_typed_expr(t, &args[1])?;
             Ok((format!("if < {} {} [ {} ] [ {} ]", a, b, a, b), at))
         }
         "max" => {
-            if args.len() != 2 { return Err("max() takes 2 arguments".into()); }
+            if args.len() != 2 {
+                return Err("max() takes 2 arguments".into());
+            }
             let (a, at) = emit_typed_expr(t, &args[0])?;
             let (b, _) = emit_typed_expr(t, &args[1])?;
             Ok((format!("if > {} {} [ {} ] [ {} ]", a, b, a, b), at))
@@ -939,7 +1096,12 @@ fn emit_call(t: &mut Transpiler, name: &str, args: &[PyExpr]) -> Result<(String,
     }
 }
 
-fn emit_method_call(t: &mut Transpiler, obj: &PyExpr, method: &str, args: &[PyExpr]) -> Result<(String, PyType), String> {
+fn emit_method_call(
+    t: &mut Transpiler,
+    obj: &PyExpr,
+    method: &str,
+    args: &[PyExpr],
+) -> Result<(String, PyType), String> {
     let (obj_code, obj_type) = emit_typed_expr(t, obj)?;
 
     // String methods
@@ -972,7 +1134,10 @@ fn emit_method_call(t: &mut Transpiler, obj: &PyExpr, method: &str, args: &[PyEx
             2 => {
                 let (a0, _) = emit_typed_expr(t, &args[0])?;
                 let (a1, _) = emit_typed_expr(t, &args[1])?;
-                Ok((format!("call {} {} {} {}", ffi_name, obj_code, a0, a1), ret_type))
+                Ok((
+                    format!("call {} {} {} {}", ffi_name, obj_code, a0, a1),
+                    ret_type,
+                ))
             }
             _ => Err(format!(".{}() takes at most 2 arguments", method)),
         }
@@ -985,7 +1150,9 @@ fn emit_stmt(t: &mut Transpiler, stmt: &PyStmt) -> Result<String, String> {
     match stmt {
         PyStmt::Assign(name, value) => {
             let (val_code, val_type) = emit_typed_expr(t, value)?;
-            if val_type == PyType::Str { t.str_vars.insert(name.clone()); }
+            if val_type == PyType::Str {
+                t.str_vars.insert(name.clone());
+            }
             t.set_var_type(name, val_type);
             if t.var_map.contains_key(name) {
                 let var = t.get_var(name)?;
@@ -1006,18 +1173,32 @@ fn emit_stmt(t: &mut Transpiler, stmt: &PyStmt) -> Result<String, String> {
         }
         PyStmt::If(cond, body, orelse) => {
             let (cc, _) = emit_typed_expr(t, cond)?;
-            let body_code: Vec<String> = body.iter().map(|s| emit_stmt(t, s)).collect::<Result<_, _>>()?;
+            let body_code: Vec<String> = body
+                .iter()
+                .map(|s| emit_stmt(t, s))
+                .collect::<Result<_, _>>()?;
             let body_str = body_code.join(" ");
             if orelse.is_empty() {
                 Ok(format!("if {} [ {} ] [ 0 ]", cc, body_str))
             } else {
-                let else_code: Vec<String> = orelse.iter().map(|s| emit_stmt(t, s)).collect::<Result<_, _>>()?;
-                Ok(format!("if {} [ {} ] [ {} ]", cc, body_str, else_code.join(" ")))
+                let else_code: Vec<String> = orelse
+                    .iter()
+                    .map(|s| emit_stmt(t, s))
+                    .collect::<Result<_, _>>()?;
+                Ok(format!(
+                    "if {} [ {} ] [ {} ]",
+                    cc,
+                    body_str,
+                    else_code.join(" ")
+                ))
             }
         }
         PyStmt::While(cond, body) => {
             let (cc, _) = emit_typed_expr(t, cond)?;
-            let body_code: Vec<String> = body.iter().map(|s| emit_stmt(t, s)).collect::<Result<_, _>>()?;
+            let body_code: Vec<String> = body
+                .iter()
+                .map(|s| emit_stmt(t, s))
+                .collect::<Result<_, _>>()?;
             Ok(format!("while {} [ {} 0 ]", cc, body_code.join(" ")))
         }
         PyStmt::For(var, start, end, body) => {
@@ -1025,9 +1206,20 @@ fn emit_stmt(t: &mut Transpiler, stmt: &PyStmt) -> Result<String, String> {
             t.set_var_type(var, PyType::I64);
             let (start_code, _) = emit_typed_expr(t, start)?;
             let (end_code, _) = emit_typed_expr(t, end)?;
-            let body_code: Vec<String> = body.iter().map(|s| emit_stmt(t, s)).collect::<Result<_, _>>()?;
-            Ok(format!("let {} {} while < {} {} [ {} set {} + {} 1 0 ]",
-                loop_var, start_code, loop_var, end_code, body_code.join(" "), loop_var, loop_var))
+            let body_code: Vec<String> = body
+                .iter()
+                .map(|s| emit_stmt(t, s))
+                .collect::<Result<_, _>>()?;
+            Ok(format!(
+                "let {} {} while < {} {} [ {} set {} + {} 1 0 ]",
+                loop_var,
+                start_code,
+                loop_var,
+                end_code,
+                body_code.join(" "),
+                loop_var,
+                loop_var
+            ))
         }
         PyStmt::Pass => Ok("0".into()),
     }
@@ -1053,7 +1245,9 @@ fn emit_string_helpers(_t: &Transpiler) -> String {
     parts.push(r#"@import_ffi "env" "str_count" 2 __ffi_str_count"#.to_string());
 
     // __str_print helper: unpacks (ptr << 32 | len) and calls print(ptr, len) + print_nl()
-    parts.push("@f 1 __str_print [ call print >> $0 32 & $0 4294967295 call print_nl 0 ]".to_string());
+    parts.push(
+        "@f 1 __str_print [ call print >> $0 32 & $0 4294967295 call print_nl 0 ]".to_string(),
+    );
 
     parts.join(" ")
 }
@@ -1077,7 +1271,8 @@ fn pretrap_unsafe_patterns(source: &str) -> bool {
         //    stdlib (hashlib, re, datetime, collections, ...) just works.
         if l.starts_with("import ") || l.starts_with("from ") {
             let rest = l
-                .strip_prefix("import ").or_else(|| l.strip_prefix("from "))
+                .strip_prefix("import ")
+                .or_else(|| l.strip_prefix("from "))
                 .unwrap_or("");
             // First identifier after 'import' / 'from'
             let name: String = rest
@@ -1098,10 +1293,12 @@ fn pretrap_unsafe_patterns(source: &str) -> bool {
             for i in 0..bytes.len().saturating_sub(1) {
                 let c = bytes[i];
                 let n = bytes[i + 1];
-                if (c == b'b' || c == b'B') && (n == b'\'' || n == b'"')
-                    && (i == 0 || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_')) {
-                        return true;
-                    }
+                if (c == b'b' || c == b'B')
+                    && (n == b'\'' || n == b'"')
+                    && (i == 0 || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_'))
+                {
+                    return true;
+                }
             }
         }
 
@@ -1124,9 +1321,11 @@ fn pretrap_unsafe_patterns(source: &str) -> bool {
                 let bytes = l.as_bytes();
                 let mut in_brace = false;
                 for i in 0..bytes.len() {
-                    if bytes[i] == b'{' { in_brace = true; }
-                    else if bytes[i] == b'}' { in_brace = false; }
-                    else if in_brace && bytes[i] == b':' {
+                    if bytes[i] == b'{' {
+                        in_brace = true;
+                    } else if bytes[i] == b'}' {
+                        in_brace = false;
+                    } else if in_brace && bytes[i] == b':' {
                         return true;
                     }
                 }
@@ -1145,14 +1344,22 @@ fn has_string_multiplication(line: &str) -> bool {
     let mut escape = false;
     for i in 0..bytes.len() {
         let c = bytes[i];
-        if escape { escape = false; continue; }
+        if escape {
+            escape = false;
+            continue;
+        }
         if in_str {
-            if c == b'\\' { escape = true; continue; }
+            if c == b'\\' {
+                escape = true;
+                continue;
+            }
             if c == str_char {
                 in_str = false;
                 // Look ahead for whitespace then '*'
                 let mut j = i + 1;
-                while j < bytes.len() && bytes[j] == b' ' { j += 1; }
+                while j < bytes.len() && bytes[j] == b' ' {
+                    j += 1;
+                }
                 if j < bytes.len() && bytes[j] == b'*' {
                     // '*' not '**' (exponent)
                     if j + 1 >= bytes.len() || bytes[j + 1] != b'*' {
@@ -1166,11 +1373,12 @@ fn has_string_multiplication(line: &str) -> bool {
             // Look BEHIND for '*' then whitespace (int * 'str' pattern)
             if i > 0 {
                 let mut j = i;
-                while j > 0 && bytes[j - 1] == b' ' { j -= 1; }
-                if j > 0 && bytes[j - 1] == b'*'
-                    && (j < 2 || bytes[j - 2] != b'*') {
-                        return true;
-                    }
+                while j > 0 && bytes[j - 1] == b' ' {
+                    j -= 1;
+                }
+                if j > 0 && bytes[j - 1] == b'*' && (j < 2 || bytes[j - 2] != b'*') {
+                    return true;
+                }
             }
         }
     }
@@ -1202,7 +1410,11 @@ pub fn transpile_python(source: &str) -> Result<String, String> {
         }
     }
 
-    let main_code = if body_parts.is_empty() { "0".to_string() } else { body_parts.join(" ") };
+    let main_code = if body_parts.is_empty() {
+        "0".to_string()
+    } else {
+        body_parts.join(" ")
+    };
 
     let mut parts = Vec::new();
 
@@ -1210,7 +1422,10 @@ pub fn transpile_python(source: &str) -> Result<String, String> {
         parts.push(emit_string_helpers(&t));
     }
 
-    parts.push(format!("@schema main : () -> i64 @f 0 main [ {} ]", main_code));
+    parts.push(format!(
+        "@schema main : () -> i64 @f 0 main [ {} ]",
+        main_code
+    ));
 
     // Emit data sections
     for (offset, s) in &t.string_data {

@@ -63,13 +63,15 @@ fn parse_http_request(stream: &mut TcpStream) -> Option<HttpRequest> {
     }
 
     // Check if we have headers now
-    let header_end = buf[..total].windows(4)
+    let header_end = buf[..total]
+        .windows(4)
         .position(|w| w == b"\r\n\r\n")
         .map(|p| p + 4)?;
 
     // Parse content-length to see if we need more body
     let headers_str = String::from_utf8_lossy(&buf[..header_end]);
-    let content_length: usize = headers_str.lines()
+    let content_length: usize = headers_str
+        .lines()
         .find(|l| l.to_lowercase().starts_with("content-length:"))
         .and_then(|l| l.split(':').nth(1))
         .and_then(|v| v.trim().parse().ok())
@@ -101,7 +103,9 @@ fn parse_http_request(stream: &mut TcpStream) -> Option<HttpRequest> {
 
     let first_line = headers_part.lines().next()?;
     let parts: Vec<&str> = first_line.split_whitespace().collect();
-    if parts.len() < 2 { return None; }
+    if parts.len() < 2 {
+        return None;
+    }
 
     let method = parts[0].to_string();
     let path = parts[1].to_string();
@@ -115,7 +119,12 @@ fn parse_http_request(stream: &mut TcpStream) -> Option<HttpRequest> {
         }
     }
 
-    Some(HttpRequest { method, path, body, headers })
+    Some(HttpRequest {
+        method,
+        path,
+        body,
+        headers,
+    })
 }
 
 // ─── HTTP Response helpers ──────────────────────────────────────────
@@ -156,7 +165,12 @@ fn send_json_with_header(
          {}Content-Length: {}\r\n\
          \r\n\
          {}",
-        status, status_text, conn, extra, body.len(), body
+        status,
+        status_text,
+        conn,
+        extra,
+        body.len(),
+        body
     );
     let _ = stream.write_all(response.as_bytes());
     let _ = stream.flush();
@@ -187,7 +201,11 @@ fn send_json_keepalive(stream: &mut TcpStream, status: u16, body: &str, keep_ali
          Content-Length: {}\r\n\
          \r\n\
          {}",
-        status, status_text, conn, body.len(), body
+        status,
+        status_text,
+        conn,
+        body.len(),
+        body
     );
     let _ = stream.write_all(response.as_bytes());
     let _ = stream.flush();
@@ -219,7 +237,8 @@ fn send_html(stream: &mut TcpStream, html: &str) {
          Content-Length: {}\r\n\
          \r\n\
          {}",
-        html.len(), html
+        html.len(),
+        html
     );
     let _ = stream.write_all(response.as_bytes());
     let _ = stream.flush();
@@ -230,11 +249,20 @@ fn send_html(stream: &mut TcpStream, html: &str) {
 /// Dispatch an HTTP request to the appropriate handler.
 /// Returns (status, body, optional extra header).
 /// The extra header is used for X-Next-Token pagination on GET /v1/cells.
-fn handle_request(req: &HttpRequest, cell_manager: &CellManager) -> (u16, String, Option<(String, String)>) {
+fn handle_request(
+    req: &HttpRequest,
+    cell_manager: &CellManager,
+) -> (u16, String, Option<(String, String)>) {
     // Pagination endpoint has its own return path that carries the header.
     // All other routes delegate to the inner handler which returns (status, body).
-    let segments: Vec<&str> = req.path.split('?').next().unwrap_or("")
-        .split('/').filter(|s| !s.is_empty()).collect();
+    let segments: Vec<&str> = req
+        .path
+        .split('?')
+        .next()
+        .unwrap_or("")
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
 
     if req.method == "GET" && segments.as_slice() == ["v1", "cells"] {
         return handle_list_cells_paginated(req, cell_manager);
@@ -249,14 +277,16 @@ fn handle_list_cells_paginated(
     cell_manager: &CellManager,
 ) -> (u16, String, Option<(String, String)>) {
     let query_str = req.path.split('?').nth(1).unwrap_or("");
-    let query_params: HashMap<&str, &str> = query_str.split('&')
+    let query_params: HashMap<&str, &str> = query_str
+        .split('&')
         .filter_map(|p| {
             let mut parts = p.splitn(2, '=');
             Some((parts.next()?, parts.next().unwrap_or("")))
         })
         .collect();
 
-    let limit: usize = query_params.get("limit")
+    let limit: usize = query_params
+        .get("limit")
         .and_then(|s| s.parse().ok())
         .unwrap_or(100);
     let next_token = query_params.get("next_token").map(|s| s.to_string());
@@ -266,25 +296,32 @@ fn handle_list_cells_paginated(
     if let Some(m) = query_params.get("metadata") {
         for pair in m.split(',') {
             if let Some((k, v)) = pair.split_once('=') {
-                meta_filter.insert(
-                    urldecode(k),
-                    urldecode(v),
-                );
+                meta_filter.insert(urldecode(k), urldecode(v));
             }
         }
     }
 
     // state filter: "running,paused,killed"; default (empty) -> running+paused
-    let states: Vec<crate::cell::CellStatus> = query_params.get("state")
-        .map(|s| s.split(',').filter_map(|tok| match tok.trim() {
-            "running" => Some(crate::cell::CellStatus::Running),
-            "paused"  => Some(crate::cell::CellStatus::Paused),
-            "killed"  => Some(crate::cell::CellStatus::Killed),
-            _ => None,
-        }).collect())
+    let states: Vec<crate::cell::CellStatus> = query_params
+        .get("state")
+        .map(|s| {
+            s.split(',')
+                .filter_map(|tok| match tok.trim() {
+                    "running" => Some(crate::cell::CellStatus::Running),
+                    "paused" => Some(crate::cell::CellStatus::Paused),
+                    "killed" => Some(crate::cell::CellStatus::Killed),
+                    _ => None,
+                })
+                .collect()
+        })
         .unwrap_or_default();
 
-    let q = crate::cell::ListQuery { metadata: meta_filter, states, limit, next_token };
+    let q = crate::cell::ListQuery {
+        metadata: meta_filter,
+        states,
+        limit,
+        next_token,
+    };
     match cell_manager.list_cells_paginated(q) {
         Ok((cells, next_token)) => {
             let json = serde_json::to_string(&cells).unwrap_or_default();
@@ -304,10 +341,9 @@ fn urldecode(s: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(
-                std::str::from_utf8(&bytes[i+1..i+3]).unwrap_or(""),
-                16,
-            ) {
+            if let Ok(byte) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+            {
                 out.push(byte);
                 i += 3;
                 continue;
@@ -321,12 +357,19 @@ fn urldecode(s: &str) -> String {
 
 fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, String) {
     // Parse path segments: /v1/cells/{id}/exec etc.
-    let segments: Vec<&str> = req.path.split('?').next().unwrap_or("")
-        .split('/').filter(|s| !s.is_empty()).collect();
+    let segments: Vec<&str> = req
+        .path
+        .split('?')
+        .next()
+        .unwrap_or("")
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
 
     // Query params
     let query_str = req.path.split('?').nth(1).unwrap_or("");
-    let query_params: HashMap<&str, &str> = query_str.split('&')
+    let query_params: HashMap<&str, &str> = query_str
+        .split('&')
         .filter_map(|p| {
             let mut parts = p.splitn(2, '=');
             Some((parts.next()?, parts.next().unwrap_or("")))
@@ -335,9 +378,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
 
     match (req.method.as_str(), segments.as_slice()) {
         // ─── Health check ───────────────────────────────────────
-        ("GET", ["v1", "health"]) => {
-            (200, r#"{"status":"ok","service":"cell","version":"0.2.0"}"#.to_string())
-        }
+        ("GET", ["v1", "health"]) => (
+            200,
+            r#"{"status":"ok","service":"cell","version":"0.2.0"}"#.to_string(),
+        ),
 
         // ─── POST /v1/synapse/infer — Cell wrapper over local inference ──
         ("POST", ["v1", "synapse", "infer"]) => {
@@ -407,14 +451,20 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             let snapshot = cell_manager.metrics.snapshot();
             match serde_json::to_string(&snapshot) {
                 Ok(json) => (200, json),
-                Err(e) => (500, format!(r#"{{"error":"Metrics serialization failed: {}"}}"#, e)),
+                Err(e) => (
+                    500,
+                    format!(r#"{{"error":"Metrics serialization failed: {}"}}"#, e),
+                ),
             }
         }
 
         // ─── GET /v1/stats — Dashboard aggregate stats ──────────
         ("GET", ["v1", "stats"]) => {
             let cells = cell_manager.list_cells();
-            let active = cells.iter().filter(|c| c.status == crate::cell::CellStatus::Running).count();
+            let active = cells
+                .iter()
+                .filter(|c| c.status == crate::cell::CellStatus::Running)
+                .count();
             let persistent = cells.iter().filter(|c| c.persistent).count();
             let total_execs: u64 = cells.iter().map(|c| c.executions).sum();
             let metrics = cell_manager.metrics.snapshot();
@@ -431,7 +481,6 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
         }
 
         // ─── Volumes API ────────────────────────────────────────
-        
         ("POST", ["v1", "volumes"]) => {
             let body: serde_json::Value = serde_json::from_str(&req.body).unwrap_or_default();
             let vid = body["volume_id"].as_str().map(|s| s.to_string());
@@ -440,29 +489,24 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
             }
         }
-        ("GET", ["v1", "volumes"]) => {
-            match cell_manager.list_volumes() {
-                Ok(v) => (200, serde_json::to_string(&v).unwrap_or_default()),
-                Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
-            }
-        }
-        ("GET", ["v1", "volumes", id]) => {
-            match cell_manager.get_volume(id) {
-                Ok(v) => (200, v.to_string()),
-                Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
-            }
-        }
-        ("DELETE", ["v1", "volumes", id]) => {
-            match cell_manager.delete_volume(id) {
-                Ok(()) => (200, r#"{"status":"deleted"}"#.to_string()),
-                Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
-            }
-        }
+        ("GET", ["v1", "volumes"]) => match cell_manager.list_volumes() {
+            Ok(v) => (200, serde_json::to_string(&v).unwrap_or_default()),
+            Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
+        },
+        ("GET", ["v1", "volumes", id]) => match cell_manager.get_volume(id) {
+            Ok(v) => (200, v.to_string()),
+            Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
+        },
+        ("DELETE", ["v1", "volumes", id]) => match cell_manager.delete_volume(id) {
+            Ok(()) => (200, r#"{"status":"deleted"}"#.to_string()),
+            Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
+        },
         ("GET", ["v1", "volumes", id, "files"]) => {
             let path = query_params.get("path").unwrap_or(&"");
             match cell_manager.read_volume_file(id, path) {
                 Ok(data) => {
-                    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
+                    let b64 =
+                        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
                     (200, format!(r#"{{"data":"{}"}}"#, b64))
                 }
                 Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
@@ -485,12 +529,15 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
             }
         }
-        ("POST", ["v1", "volumes", _id, "upload-url"]) => {
-            (200, r#"{"url":"http://localhost:8000/v1/volumes/upload_stub","method":"PUT"}"#.to_string())
-        }
-        ("POST", ["v1", "volumes", _id, "download-url"]) => {
-            (200, r#"{"url":"http://localhost:8000/v1/volumes/download_stub","method":"GET"}"#.to_string())
-        }
+        ("POST", ["v1", "volumes", _id, "upload-url"]) => (
+            200,
+            r#"{"url":"http://localhost:8000/v1/volumes/upload_stub","method":"PUT"}"#.to_string(),
+        ),
+        ("POST", ["v1", "volumes", _id, "download-url"]) => (
+            200,
+            r#"{"url":"http://localhost:8000/v1/volumes/download_stub","method":"GET"}"#
+                .to_string(),
+        ),
         ("POST", ["v1", "volumes", _id, "raw"]) => {
             (200, r#"{"status":"bulk_upload_stubbed"}"#.to_string())
         }
@@ -516,16 +563,29 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 runtime: body["runtime"].as_str().unwrap_or("python3").to_string(),
                 description: body["description"].as_str().unwrap_or("").to_string(),
                 author: body["author"].as_str().unwrap_or("").to_string(),
-                packages: body["packages"].as_array()
-                    .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                packages: body["packages"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
                     .unwrap_or_default(),
-                files: body["files"].as_array()
-                    .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                files: body["files"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
                     .unwrap_or_default(),
                 start_command: body["start_command"].as_str().map(String::from),
                 ready_command: body["ready_command"].as_str().map(String::from),
                 user: body["user"].as_str().unwrap_or("sandbox").to_string(),
-                working_directory: body["working_directory"].as_str().unwrap_or("/data").to_string(),
+                working_directory: body["working_directory"]
+                    .as_str()
+                    .unwrap_or("/data")
+                    .to_string(),
                 registered_at: 0,
                 compiled: false,
                 tags: std::collections::HashMap::new(),
@@ -557,7 +617,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             } else {
                 match cell_manager.get_template_info(name) {
                     Some(t) => (200, serde_json::to_string(&t).unwrap_or_default()),
-                    None => (404, format!(r#"{{"error":"Template not found: {}"}}"#, name)),
+                    None => (
+                        404,
+                        format!(r#"{{"error":"Template not found: {}"}}"#, name),
+                    ),
                 }
             }
         }
@@ -575,12 +638,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
         }
 
         // DELETE /v1/templates/{name} — Delete a custom template
-        ("DELETE", ["v1", "templates", name]) => {
-            match cell_manager.delete_template(name) {
-                Ok(()) => (200, r#"{"status":"deleted"}"#.to_string()),
-                Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
-            }
-        }
+        ("DELETE", ["v1", "templates", name]) => match cell_manager.delete_template(name) {
+            Ok(()) => (200, r#"{"status":"deleted"}"#.to_string()),
+            Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
+        },
 
         // ─── POST /v1/cells — Create cell ───────────────────────
         ("POST", ["v1", "cells"]) => {
@@ -593,33 +654,33 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             let persistent = body["persistent"].as_bool().unwrap_or(false);
             let default_timeout = if persistent { 3_600_000 } else { 300_000 };
             let timeout_ms = body["timeout_ms"].as_u64().unwrap_or(default_timeout);
-            
+
             let volume_id = body["volume_id"].as_str().map(|s| s.to_string());
 
             let metadata: HashMap<String, String> = body["metadata"]
                 .as_object()
-                .map(|m| m.iter()
-                    .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
-                    .collect())
+                .map(|m| {
+                    m.iter()
+                        .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+                        .collect()
+                })
                 .unwrap_or_default();
 
             let envs: HashMap<String, String> = body["envs"]
                 .as_object()
-                .map(|m| m.iter()
-                    .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
-                    .collect())
+                .map(|m| {
+                    m.iter()
+                        .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+                        .collect()
+                })
                 .unwrap_or_default();
 
             // ─── E2B Sandbox.create parity fields (milestone 1.11) ──
             let allow_internet_access = body["allow_internet_access"].as_bool();
 
-            let network = body.get("network")
-                .filter(|v| !v.is_null())
-                .cloned();
+            let network = body.get("network").filter(|v| !v.is_null()).cloned();
 
-            let lifecycle = body.get("lifecycle")
-                .filter(|v| !v.is_null())
-                .cloned();
+            let lifecycle = body.get("lifecycle").filter(|v| !v.is_null()).cloned();
 
             let volume_mounts: Vec<serde_json::Value> = body["volume_mounts"]
                 .as_array()
@@ -649,23 +710,19 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
         }
 
         // ─── GET /v1/cells/{id} — Get cell info ─────────────────
-        ("GET", ["v1", "cells", id]) => {
-            match cell_manager.get_cell(id) {
-                Some(info) => {
-                    let json = serde_json::to_string(&info).unwrap_or_default();
-                    (200, json)
-                }
-                None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
+        ("GET", ["v1", "cells", id]) => match cell_manager.get_cell(id) {
+            Some(info) => {
+                let json = serde_json::to_string(&info).unwrap_or_default();
+                (200, json)
             }
-        }
+            None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
+        },
 
         // ─── DELETE /v1/cells/{id} — Kill cell ──────────────────
-        ("DELETE", ["v1", "cells", id]) => {
-            match cell_manager.kill_cell(id) {
-                Ok(()) => (200, r#"{"status":"killed"}"#.to_string()),
-                Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
-            }
-        }
+        ("DELETE", ["v1", "cells", id]) => match cell_manager.kill_cell(id) {
+            Ok(()) => (200, r#"{"status":"killed"}"#.to_string()),
+            Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
+        },
 
         // ─── Sprint A Batch 1: Lifecycle + metadata + envs ────────
 
@@ -677,23 +734,32 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             };
             let timeout_secs = match body["timeout"].as_u64() {
                 Some(t) => t,
-                None => return (400, r#"{"error":"Missing 'timeout' field (seconds)"}"#.to_string()),
+                None => {
+                    return (
+                        400,
+                        r#"{"error":"Missing 'timeout' field (seconds)"}"#.to_string(),
+                    )
+                }
             };
             // Clamp: min 1s, max 24h
             let timeout_ms = timeout_secs.saturating_mul(1000).clamp(1_000, 86_400_000);
             match cell_manager.set_timeout(id, timeout_ms) {
-                Ok(()) => (200, format!(r#"{{"status":"ok","timeout_ms":{}}}"#, timeout_ms)),
+                Ok(()) => (
+                    200,
+                    format!(r#"{{"status":"ok","timeout_ms":{}}}"#, timeout_ms),
+                ),
                 Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
             }
         }
 
         // POST /v1/cells/{id}/refresh — Reset inactivity timer
-        ("POST", ["v1", "cells", id, "refresh"]) => {
-            match cell_manager.refresh(id) {
-                Ok(ts) => (200, format!(r#"{{"status":"refreshed","last_active_ms":{}}}"#, ts)),
-                Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
-            }
-        }
+        ("POST", ["v1", "cells", id, "refresh"]) => match cell_manager.refresh(id) {
+            Ok(ts) => (
+                200,
+                format!(r#"{{"status":"refreshed","last_active_ms":{}}}"#, ts),
+            ),
+            Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
+        },
 
         // PATCH /v1/cells/{id}/metadata — Merge metadata k/v pairs
         ("PATCH", ["v1", "cells", id, "metadata"]) => {
@@ -701,10 +767,13 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 Ok(v) => v,
                 Err(e) => return (400, format!(r#"{{"error":"Invalid JSON: {}"}}"#, e)),
             };
-            let patch: std::collections::HashMap<String, String> = body.as_object()
-                .map(|m| m.iter()
-                    .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
-                    .collect())
+            let patch: std::collections::HashMap<String, String> = body
+                .as_object()
+                .map(|m| {
+                    m.iter()
+                        .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+                        .collect()
+                })
                 .unwrap_or_default();
             match cell_manager.patch_metadata(id, patch) {
                 Ok(meta) => {
@@ -716,63 +785,56 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
         }
 
         // GET /v1/cells/{id}/is_running — Lightweight heartbeat check
-        ("GET", ["v1", "cells", id, "is_running"]) => {
-            match cell_manager.get_cell(id) {
-                Some(info) => {
-                    let running = info.status == crate::cell::CellStatus::Running;
-                    (200, format!(r#"{{"running":{}}}"#, running))
-                }
-                None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
+        ("GET", ["v1", "cells", id, "is_running"]) => match cell_manager.get_cell(id) {
+            Some(info) => {
+                let running = info.status == crate::cell::CellStatus::Running;
+                (200, format!(r#"{{"running":{}}}"#, running))
             }
-        }
+            None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
+        },
 
         // GET /v1/cells/{id}/metrics — Per-cell usage metrics
-        ("GET", ["v1", "cells", id, "metrics"]) => {
-            match cell_manager.get_cell(id) {
-                Some(info) => {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64;
-                    let uptime_ms = now.saturating_sub(info.created_at);
-                    let last_active = info.last_active_ms.unwrap_or(info.created_at);
-                    let result = serde_json::json!({
-                        "cell_id": info.cell_id,
-                        "executions": info.executions,
-                        "created_at": info.created_at,
-                        "uptime_ms": uptime_ms,
-                        "last_active_ms": last_active,
-                        "idle_ms": now.saturating_sub(last_active),
-                        "status": format!("{:?}", info.status).to_lowercase(),
-                        "template": info.template,
-                        "persistent": info.persistent,
-                        "timeout_ms": info.timeout_ms,
-                    });
-                    (200, result.to_string())
-                }
-                None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
+        ("GET", ["v1", "cells", id, "metrics"]) => match cell_manager.get_cell(id) {
+            Some(info) => {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                let uptime_ms = now.saturating_sub(info.created_at);
+                let last_active = info.last_active_ms.unwrap_or(info.created_at);
+                let result = serde_json::json!({
+                    "cell_id": info.cell_id,
+                    "executions": info.executions,
+                    "created_at": info.created_at,
+                    "uptime_ms": uptime_ms,
+                    "last_active_ms": last_active,
+                    "idle_ms": now.saturating_sub(last_active),
+                    "status": format!("{:?}", info.status).to_lowercase(),
+                    "template": info.template,
+                    "persistent": info.persistent,
+                    "timeout_ms": info.timeout_ms,
+                });
+                (200, result.to_string())
             }
-        }
+            None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
+        },
 
         // ─── Sprint A Batch 5: Pause / Resume / Snapshots ────────
 
         // POST /v1/cells/{id}/pause — Pause cell + filesystem snapshot
-        ("POST", ["v1", "cells", id, "pause"]) => {
-            match cell_manager.pause_cell(id) {
-                Ok(snapshot_id) => (200, format!(
-                    r#"{{"status":"paused","snapshot_id":"{}"}}"#, snapshot_id
-                )),
-                Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
-            }
-        }
+        ("POST", ["v1", "cells", id, "pause"]) => match cell_manager.pause_cell(id) {
+            Ok(snapshot_id) => (
+                200,
+                format!(r#"{{"status":"paused","snapshot_id":"{}"}}"#, snapshot_id),
+            ),
+            Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
+        },
 
         // POST /v1/cells/{id}/resume — Resume a paused cell
-        ("POST", ["v1", "cells", id, "resume"]) => {
-            match cell_manager.resume_cell(id) {
-                Ok(()) => (200, r#"{"status":"running"}"#.to_string()),
-                Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
-            }
-        }
+        ("POST", ["v1", "cells", id, "resume"]) => match cell_manager.resume_cell(id) {
+            Ok(()) => (200, r#"{"status":"running"}"#.to_string()),
+            Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
+        },
 
         // GET /v1/cells/{id}/snapshots — List snapshots for this cell
         ("GET", ["v1", "cells", id, "snapshots"]) => {
@@ -781,17 +843,18 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
         }
 
         // POST /v1/cells/{id}/snapshot — Create a snapshot
-        ("POST", ["v1", "cells", id, "snapshot"]) => {
-            match cell_manager.snapshot_cell(id) {
-                Ok(snap_id) => (200, format!(r#"{{"snapshot_id":"{}"}}"#, snap_id)),
-                Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
-            }
-        }
+        ("POST", ["v1", "cells", id, "snapshot"]) => match cell_manager.snapshot_cell(id) {
+            Ok(snap_id) => (200, format!(r#"{{"snapshot_id":"{}"}}"#, snap_id)),
+            Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
+        },
 
         // DELETE /v1/cells/{id}/snapshots/{snap_id} — Delete a snapshot
         ("DELETE", ["v1", "cells", id, "snapshots", snap_id]) => {
             match cell_manager.delete_snapshot(id, snap_id) {
-                Ok(()) => (200, format!(r#"{{"status":"deleted","snapshot_id":"{}"}}"#, snap_id)),
+                Ok(()) => (
+                    200,
+                    format!(r#"{{"status":"deleted","snapshot_id":"{}"}}"#, snap_id),
+                ),
                 Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
             }
         }
@@ -808,10 +871,14 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                     } else {
                         String::new()
                     };
-                    let entries: Vec<serde_json::Value> = logs.lines()
+                    let entries: Vec<serde_json::Value> = logs
+                        .lines()
                         .filter_map(|line| serde_json::from_str(line).ok())
                         .collect();
-                    (200, serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string()))
+                    (
+                        200,
+                        serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string()),
+                    )
                 }
                 None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
             }
@@ -826,12 +893,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
         }
 
         // GET /v1/cells/{id}/envs — Return current environment variables
-        ("GET", ["v1", "cells", id, "envs"]) => {
-            match cell_manager.get_envs(id) {
-                Ok(envs) => (200, serde_json::to_string(&envs).unwrap_or_default()),
-                Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
-            }
-        }
+        ("GET", ["v1", "cells", id, "envs"]) => match cell_manager.get_envs(id) {
+            Ok(envs) => (200, serde_json::to_string(&envs).unwrap_or_default()),
+            Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
+        },
 
         // PATCH /v1/cells/{id}/envs — Merge environment variables
         ("PATCH", ["v1", "cells", id, "envs"]) => {
@@ -839,10 +904,13 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 Ok(v) => v,
                 Err(e) => return (400, format!(r#"{{"error":"Invalid JSON: {}"}}"#, e)),
             };
-            let patch: std::collections::HashMap<String, String> = body.as_object()
-                .map(|m| m.iter()
-                    .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
-                    .collect())
+            let patch: std::collections::HashMap<String, String> = body
+                .as_object()
+                .map(|m| {
+                    m.iter()
+                        .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+                        .collect()
+                })
                 .unwrap_or_default();
             match cell_manager.patch_envs(id, patch) {
                 Ok(envs) => (200, serde_json::to_string(&envs).unwrap_or_default()),
@@ -866,7 +934,8 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             let language = body["language"].as_str();
 
             // Check if this is a persistent cell — route to exec_persistent
-            let is_persistent = cell_manager.get_cell(id)
+            let is_persistent = cell_manager
+                .get_cell(id)
                 .map(|info| info.persistent)
                 .unwrap_or(false);
 
@@ -904,15 +973,18 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             let background = body["background"].as_bool().unwrap_or(false);
             if background {
                 match cell_manager.start_background_command(id, command) {
-                    Ok(command_id) => {
-                        match cell_manager.get_background_command(&command_id) {
-                            Some(cmd) => {
-                                let json = serde_json::to_string(&cmd).unwrap_or_default();
-                                return (200, json);
-                            }
-                            None => return (500, r#"{"error":"Background command lost after creation"}"#.to_string()),
+                    Ok(command_id) => match cell_manager.get_background_command(&command_id) {
+                        Some(cmd) => {
+                            let json = serde_json::to_string(&cmd).unwrap_or_default();
+                            return (200, json);
                         }
-                    }
+                        None => {
+                            return (
+                                500,
+                                r#"{"error":"Background command lost after creation"}"#.to_string(),
+                            )
+                        }
+                    },
                     Err(e) => return (400, format!(r#"{{"error":"{}"}}"#, e)),
                 }
             }
@@ -933,7 +1005,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                     let json = serde_json::to_string(&cmd).unwrap_or_default();
                     (200, json)
                 }
-                None => (404, format!(r#"{{"error":"Command not found: {}"}}"#, cmd_id)),
+                None => (
+                    404,
+                    format!(r#"{{"error":"Command not found: {}"}}"#, cmd_id),
+                ),
             }
         }
 
@@ -956,18 +1031,25 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 Err(e) => return (400, format!(r#"{{"error":"Invalid JSON: {}"}}"#, e)),
             };
             let name = body["name"].as_str().unwrap_or("default");
-            let ctx_id = format!("ctx_{}", &uuid::Uuid::new_v4().to_string().replace("-", "")[..12]);
+            let ctx_id = format!(
+                "ctx_{}",
+                &uuid::Uuid::new_v4().to_string().replace("-", "")[..12]
+            );
 
             // Initialize the context namespace in the persistent session
             let init_code = format!(
                 "if '_ctx_ns' not in dir(): _ctx_ns = {{}}\n_ctx_ns['{}'] = {{'__name__': '{}'}}\n",
                 ctx_id, name
             );
-            let is_persistent = cell_manager.get_cell(id)
+            let is_persistent = cell_manager
+                .get_cell(id)
                 .map(|info| info.persistent)
                 .unwrap_or(false);
             if !is_persistent {
-                return (400, r#"{"error":"Code contexts require a persistent cell"}"#.to_string());
+                return (
+                    400,
+                    r#"{"error":"Code contexts require a persistent cell"}"#.to_string(),
+                );
             }
             match cell_manager.exec_persistent(id, &init_code, None) {
                 Ok(_) => {
@@ -1000,21 +1082,31 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 _ctx = _ctx_ns['{}']\n\
                 _ctx['__builtins__'] = __builtins__\n\
                 exec(compile({}, '<ctx-{}>', 'exec'), _ctx)\n",
-                ctx_id, ctx_id, ctx_id,
+                ctx_id,
+                ctx_id,
+                ctx_id,
                 serde_json::to_string(code).unwrap_or_else(|_| format!("\"{}\"", code)),
                 &ctx_id[..8],
             );
             match cell_manager.exec_persistent(id, &wrapped, None) {
                 Ok(r) => {
                     let rcpt = &r.receipt;
-                    (200, format!(
-                        r#"{{"stdout":{},"stderr":{},"exit_code":{},"latency_ms":{},"context_id":"{}","receipt":{{"execution_id":"{}","code_hash":"{}","result_hash":"{}","template":"{}","timestamp":{}}}}}"#,
-                        serde_json::to_string(&r.stdout).unwrap_or_default(),
-                        serde_json::to_string(&r.stderr).unwrap_or_default(),
-                        r.exit_code, r.latency_ms, ctx_id,
-                        rcpt.execution_id, rcpt.code_hash, rcpt.result_hash,
-                        rcpt.template, rcpt.timestamp
-                    ))
+                    (
+                        200,
+                        format!(
+                            r#"{{"stdout":{},"stderr":{},"exit_code":{},"latency_ms":{},"context_id":"{}","receipt":{{"execution_id":"{}","code_hash":"{}","result_hash":"{}","template":"{}","timestamp":{}}}}}"#,
+                            serde_json::to_string(&r.stdout).unwrap_or_default(),
+                            serde_json::to_string(&r.stderr).unwrap_or_default(),
+                            r.exit_code,
+                            r.latency_ms,
+                            ctx_id,
+                            rcpt.execution_id,
+                            rcpt.code_hash,
+                            rcpt.result_hash,
+                            rcpt.template,
+                            rcpt.timestamp
+                        ),
+                    )
                 }
                 Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
             }
@@ -1044,7 +1136,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 ctx_id, ctx_id
             );
             match cell_manager.exec_persistent(id, &del_code, None) {
-                Ok(_) => (200, format!(r#"{{"status":"deleted","context_id":"{}"}}"#, ctx_id)),
+                Ok(_) => (
+                    200,
+                    format!(r#"{{"status":"deleted","context_id":"{}"}}"#, ctx_id),
+                ),
                 Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
             }
         }
@@ -1080,7 +1175,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
         ("GET", ["v1", "cells", _id, "processes", cmd_id]) => {
             match cell_manager.get_background_command(cmd_id) {
                 Some(cmd) => (200, serde_json::to_string(&cmd).unwrap_or_default()),
-                None => (404, format!(r#"{{"error":"Process not found: {}"}}"#, cmd_id)),
+                None => (
+                    404,
+                    format!(r#"{{"error":"Process not found: {}"}}"#, cmd_id),
+                ),
             }
         }
 
@@ -1096,11 +1194,15 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
         // This is how agents get internet access without WASI networking.
         ("POST", ["v1", "cells", id, "fetch"]) => {
             // Sprint A Batch 1: Enforce allow_internet_access flag
-            let internet_allowed = cell_manager.get_cell(id)
+            let internet_allowed = cell_manager
+                .get_cell(id)
                 .and_then(|info| info.allow_internet_access)
                 .unwrap_or(true); // default true = backward compat
             if !internet_allowed {
-                return (403, r#"{"error":"Internet access is disabled for this sandbox"}"#.to_string());
+                return (
+                    403,
+                    r#"{"error":"Internet access is disabled for this sandbox"}"#.to_string(),
+                );
             }
 
             let body: serde_json::Value = match serde_json::from_str(&req.body) {
@@ -1127,14 +1229,21 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
 
             let response = match method.as_str() {
                 "GET" => agent.get(url).call(),
-                "POST" => agent.post(url)
+                "POST" => agent
+                    .post(url)
                     .set("Content-Type", "application/json")
                     .send_string(request_body),
-                "PUT" => agent.put(url)
+                "PUT" => agent
+                    .put(url)
                     .set("Content-Type", "application/json")
                     .send_string(request_body),
                 "DELETE" => agent.delete(url).call(),
-                _ => return (400, format!(r#"{{"error":"Unsupported method: {}"}}"#, method)),
+                _ => {
+                    return (
+                        400,
+                        format!(r#"{{"error":"Unsupported method: {}"}}"#, method),
+                    )
+                }
             };
 
             let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
@@ -1208,9 +1317,13 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                     });
                     (200, result.to_string())
                 }
-                Err(e) => {
-                    (502, format!(r#"{{"error":"Fetch failed: {}","latency_ms":{}}}"#, e, latency_ms))
-                }
+                Err(e) => (
+                    502,
+                    format!(
+                        r#"{{"error":"Fetch failed: {}","latency_ms":{}}}"#,
+                        e, latency_ms
+                    ),
+                ),
             }
         }
 
@@ -1227,7 +1340,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             };
 
             if files.len() > 100 {
-                return (400, r#"{"error":"Maximum 100 files per batch"}"#.to_string());
+                return (
+                    400,
+                    r#"{"error":"Maximum 100 files per batch"}"#.to_string(),
+                );
             }
 
             let mut written = 0u64;
@@ -1283,7 +1399,14 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             };
 
             match cell_manager.write_file(id, path, &content) {
-                Ok(()) => (200, format!(r#"{{"status":"written","path":"{}","bytes":{}}}"#, path, content.len())),
+                Ok(()) => (
+                    200,
+                    format!(
+                        r#"{{"status":"written","path":"{}","bytes":{}}}"#,
+                        path,
+                        content.len()
+                    ),
+                ),
                 Err(e) => (400, format!(r#"{{"error":"{}"}}"#, e)),
             }
         }
@@ -1294,11 +1417,18 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             match cell_manager.read_file(id, path) {
                 Ok(data) => {
                     let content = String::from_utf8_lossy(&data);
-                    (200, format!(r#"{{"path":"{}","content":"{}","bytes":{}}}"#,
-                        path,
-                        content.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n"),
-                        data.len()
-                    ))
+                    (
+                        200,
+                        format!(
+                            r#"{{"path":"{}","content":"{}","bytes":{}}}"#,
+                            path,
+                            content
+                                .replace('\\', "\\\\")
+                                .replace('"', "\\\"")
+                                .replace('\n', "\\n"),
+                            data.len()
+                        ),
+                    )
                 }
                 Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
             }
@@ -1343,7 +1473,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
         ("DELETE", ["v1", "cells", id, "files"]) => {
             let path = query_params.get("path").unwrap_or(&"");
             if path.is_empty() {
-                return (400, r#"{"error":"Missing 'path' query parameter"}"#.to_string());
+                return (
+                    400,
+                    r#"{"error":"Missing 'path' query parameter"}"#.to_string(),
+                );
             }
             match cell_manager.remove_file(id, path) {
                 Ok(()) => (200, format!(r#"{{"status":"removed","path":"{}"}}"#, path)),
@@ -1390,7 +1523,6 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             }
         }
 
-
         // ─── POST /v1/batch/exec — Batch execution ────────────────
         ("POST", ["v1", "batch", "exec"]) => {
             let body: serde_json::Value = match serde_json::from_str(&req.body) {
@@ -1402,7 +1534,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 None => return (400, r#"{"error":"Missing 'scripts' array"}"#.to_string()),
             };
             if scripts.len() > 50 {
-                return (400, r#"{"error":"Maximum 50 scripts per batch"}"#.to_string());
+                return (
+                    400,
+                    r#"{"error":"Maximum 50 scripts per batch"}"#.to_string(),
+                );
             }
             let template = match body["language"].as_str().unwrap_or("python3") {
                 "javascript" | "js" => "javascript",
@@ -1424,7 +1559,13 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                     }
                 };
                 // Create ephemeral cell
-                match cell_manager.create_cell(template, 60_000, HashMap::new(), HashMap::new(), None) {
+                match cell_manager.create_cell(
+                    template,
+                    60_000,
+                    HashMap::new(),
+                    HashMap::new(),
+                    None,
+                ) {
                     Ok(info) => {
                         let result = cell_manager.exec(&info.cell_id, code, None);
                         let _ = cell_manager.kill_cell(&info.cell_id);
@@ -1451,7 +1592,14 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                     }
                 }
             }
-            (200, format!(r#"{{"results":[{}],"count":{}}}"#, results_json.join(","), results_json.len()))
+            (
+                200,
+                format!(
+                    r#"{{"results":[{}],"count":{}}}"#,
+                    results_json.join(","),
+                    results_json.len()
+                ),
+            )
         }
 
         // ─── POST /v1/demo/exec — Public demo (no auth) ─────────
@@ -1472,7 +1620,13 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             };
 
             // Create ephemeral cell
-            let cell_info = match cell_manager.create_cell(template, 30_000, HashMap::new(), HashMap::new(), None) {
+            let cell_info = match cell_manager.create_cell(
+                template,
+                30_000,
+                HashMap::new(),
+                HashMap::new(),
+                None,
+            ) {
                 Ok(info) => info,
                 Err(e) => return (500, format!(r#"{{"error":"Cell creation failed: {}"}}"#, e)),
             };
@@ -1487,21 +1641,30 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             match result {
                 Ok(r) => {
                     // Mark this execution as a demo (exec() already recorded base metrics)
-                    cell_manager.metrics.demo_executions.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    cell_manager
+                        .metrics
+                        .demo_executions
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     let rcpt = &r.receipt;
                     let receipt_json = format!(
                         r#""receipt":{{"execution_id":"{}","code_hash":"{}","result_hash":"{}","template":"{}","timestamp":{}}}"#,
-                        rcpt.execution_id, rcpt.code_hash, rcpt.result_hash,
-                        rcpt.template, rcpt.timestamp
+                        rcpt.execution_id,
+                        rcpt.code_hash,
+                        rcpt.result_hash,
+                        rcpt.template,
+                        rcpt.timestamp
                     );
-                    (200, format!(
-                        r#"{{"stdout":{},"stderr":{},"exit_code":{},"latency_ms":{},{}}}"#,
-                        serde_json::to_string(&r.stdout).unwrap_or_default(),
-                        serde_json::to_string(&r.stderr).unwrap_or_default(),
-                        r.exit_code,
-                        r.latency_ms,
-                        receipt_json
-                    ))
+                    (
+                        200,
+                        format!(
+                            r#"{{"stdout":{},"stderr":{},"exit_code":{},"latency_ms":{},{}}}"#,
+                            serde_json::to_string(&r.stdout).unwrap_or_default(),
+                            serde_json::to_string(&r.stderr).unwrap_or_default(),
+                            r.exit_code,
+                            r.latency_ms,
+                            receipt_json
+                        ),
+                    )
                 }
                 Err(e) => {
                     cell_manager.metrics.record_error();
@@ -1518,16 +1681,22 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
         ("POST", ["v1", "cells", _id, "processes", cmd_id, "signal"]) => {
             let body: serde_json::Value = serde_json::from_str(&req.body).unwrap_or_default();
             let signal = body["signal"].as_i64().unwrap_or(15) as i32; // default SIGTERM
-            // For now, map signal 9 → kill, everything else → best-effort
+                                                                       // For now, map signal 9 → kill, everything else → best-effort
             if signal == 9 {
                 match cell_manager.kill_process(cmd_id) {
-                    Ok(()) => (200, format!(r#"{{"status":"signaled","signal":{}}}"#, signal)),
+                    Ok(()) => (
+                        200,
+                        format!(r#"{{"status":"signaled","signal":{}}}"#, signal),
+                    ),
                     Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
                 }
             } else {
                 // SIGTERM: try graceful close via stdin EOF, then kill after 5s
                 let _ = cell_manager.close_process_stdin(cmd_id);
-                (200, format!(r#"{{"status":"signaled","signal":{}}}"#, signal))
+                (
+                    200,
+                    format!(r#"{{"status":"signaled","signal":{}}}"#, signal),
+                )
             }
         }
 
@@ -1539,9 +1708,15 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                     // Remote mode would return the gateway's public hostname
                     let hostname = std::env::var("CELL_PUBLIC_HOST")
                         .unwrap_or_else(|_| "localhost".to_string());
-                    let port = std::env::var("CELL_PUBLIC_PORT")
-                        .unwrap_or_else(|_| "8002".to_string());
-                    (200, format!(r#"{{"host":"{}","port":{},"cell_id":"{}"}}"#, hostname, port, id))
+                    let port =
+                        std::env::var("CELL_PUBLIC_PORT").unwrap_or_else(|_| "8002".to_string());
+                    (
+                        200,
+                        format!(
+                            r#"{{"host":"{}","port":{},"cell_id":"{}"}}"#,
+                            hostname, port, id
+                        ),
+                    )
                 }
                 None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
             }
@@ -1565,26 +1740,26 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 Some(_) => {
                     // Generate a per-cell MCP access token (SHA-256 of cell_id + secret)
                     let token = format!("mcp_{}", &id.replace("-", "")[..16]);
-                    (200, format!(r#"{{"token":"{}","cell_id":"{}"}}"#, token, id))
+                    (
+                        200,
+                        format!(r#"{{"token":"{}","cell_id":"{}"}}"#, token, id),
+                    )
                 }
                 None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
             }
         }
 
         // ─── MCP: Get URL ────────────────────────────────────────
-        ("GET", ["v1", "cells", id, "mcp", "url"]) => {
-            match cell_manager.get_cell(id) {
-                Some(_) => {
-                    let host = std::env::var("CELL_PUBLIC_HOST")
-                        .unwrap_or_else(|_| "localhost".to_string());
-                    let port = std::env::var("CELL_PUBLIC_PORT")
-                        .unwrap_or_else(|_| "8002".to_string());
-                    let url = format!("http://{}:{}/v1/cells/{}/mcp", host, port, id);
-                    (200, format!(r#"{{"url":"{}","cell_id":"{}"}}"#, url, id))
-                }
-                None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
+        ("GET", ["v1", "cells", id, "mcp", "url"]) => match cell_manager.get_cell(id) {
+            Some(_) => {
+                let host =
+                    std::env::var("CELL_PUBLIC_HOST").unwrap_or_else(|_| "localhost".to_string());
+                let port = std::env::var("CELL_PUBLIC_PORT").unwrap_or_else(|_| "8002".to_string());
+                let url = format!("http://{}:{}/v1/cells/{}/mcp", host, port, id);
+                (200, format!(r#"{{"url":"{}","cell_id":"{}"}}"#, url, id))
             }
-        }
+            None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
+        },
 
         // ─── MCP: Available server catalog ───────────────────────
         ("GET", ["v1", "mcp", "catalog"]) => {
@@ -1640,29 +1815,39 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 token
             );
             match cell_manager.exec_persistent(id, &config_code, None) {
-                Ok(r) => (200, format!(r#"{{"status":"configured","stdout":{}}}"#,
-                    serde_json::to_string(&r.stdout).unwrap_or_default())),
+                Ok(r) => (
+                    200,
+                    format!(
+                        r#"{{"status":"configured","stdout":{}}}"#,
+                        serde_json::to_string(&r.stdout).unwrap_or_default()
+                    ),
+                ),
                 Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
             }
         }
 
         // ─── Templates: Build status ─────────────────────────────
-        ("GET", ["v1", "templates", name, "build"]) => {
-            match cell_manager.get_template_info(name) {
-                Some(info) => {
-                    let status = if info.compiled { "completed" } else { "pending" };
-                    let result = serde_json::json!({
-                        "name": name,
-                        "status": status,
-                        "version": info.version,
-                        "compiled": info.compiled,
-                        "registered_at": info.registered_at,
-                    });
-                    (200, result.to_string())
-                }
-                None => (404, format!(r#"{{"error":"Template not found: {}"}}"#, name)),
+        ("GET", ["v1", "templates", name, "build"]) => match cell_manager.get_template_info(name) {
+            Some(info) => {
+                let status = if info.compiled {
+                    "completed"
+                } else {
+                    "pending"
+                };
+                let result = serde_json::json!({
+                    "name": name,
+                    "status": status,
+                    "version": info.version,
+                    "compiled": info.compiled,
+                    "registered_at": info.registered_at,
+                });
+                (200, result.to_string())
             }
-        }
+            None => (
+                404,
+                format!(r#"{{"error":"Template not found: {}"}}"#, name),
+            ),
+        },
 
         // ─── Templates: Rebuild ──────────────────────────────────
         ("POST", ["v1", "templates", name, "rebuild"]) => {
@@ -1676,22 +1861,33 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                         .as_millis() as u64;
                     let update = serde_json::json!({"version": info.version});
                     let _ = cell_manager.update_template(name, update);
-                    (200, format!(r#"{{"status":"rebuilding","name":"{}"}}"#, name))
+                    (
+                        200,
+                        format!(r#"{{"status":"rebuilding","name":"{}"}}"#, name),
+                    )
                 }
-                None => (404, format!(r#"{{"error":"Template not found: {}"}}"#, name)),
+                None => (
+                    404,
+                    format!(r#"{{"error":"Template not found: {}"}}"#, name),
+                ),
             }
         }
 
         // ─── Templates: Build logs ───────────────────────────────
         ("GET", ["v1", "templates", name, "build", "logs"]) => {
-            let log_path = cell_manager.templates_root.join(format!("{}.build.log", name));
+            let log_path = cell_manager
+                .templates_root
+                .join(format!("{}.build.log", name));
             let logs = if log_path.exists() {
                 std::fs::read_to_string(&log_path).unwrap_or_default()
             } else {
                 String::new()
             };
             let lines: Vec<&str> = logs.lines().collect();
-            (200, serde_json::to_string(&lines).unwrap_or_else(|_| "[]".to_string()))
+            (
+                200,
+                serde_json::to_string(&lines).unwrap_or_else(|_| "[]".to_string()),
+            )
         }
 
         // ─── Templates: Registry auth config ─────────────────────
@@ -1701,7 +1897,9 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 Err(e) => return (400, format!(r#"{{"error":"Invalid JSON: {}"}}"#, e)),
             };
             // Store registry credentials (username + token) for private template pulls
-            let registry_url = body["registry_url"].as_str().unwrap_or("https://registry.synapse.run");
+            let registry_url = body["registry_url"]
+                .as_str()
+                .unwrap_or("https://registry.synapse.run");
             let token = body["token"].as_str().unwrap_or("");
             let auth_path = cell_manager.templates_root.join(".registry_auth.json");
             let auth_data = serde_json::json!({
@@ -1724,8 +1922,12 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 Ok(v) => v,
                 Err(e) => return (400, format!(r#"{{"error":"Invalid JSON: {}"}}"#, e)),
             };
-            let volumes_dir = cell_manager.cells_root.parent()
-                .unwrap_or(&cell_manager.cells_root).join("volumes").join(vid);
+            let volumes_dir = cell_manager
+                .cells_root
+                .parent()
+                .unwrap_or(&cell_manager.cells_root)
+                .join("volumes")
+                .join(vid);
             if !volumes_dir.exists() {
                 return (404, format!(r#"{{"error":"Volume not found: {}"}}"#, vid));
             }
@@ -1739,7 +1941,9 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             } else {
                 serde_json::json!({})
             };
-            if let (Some(existing_obj), Some(patch_obj)) = (existing.as_object_mut(), body.as_object()) {
+            if let (Some(existing_obj), Some(patch_obj)) =
+                (existing.as_object_mut(), body.as_object())
+            {
                 for (k, v) in patch_obj {
                     existing_obj.insert(k.clone(), v.clone());
                 }
@@ -1750,8 +1954,12 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
 
         // GET volume metadata
         ("GET", ["v1", "volumes", vid, "metadata"]) => {
-            let volumes_dir = cell_manager.cells_root.parent()
-                .unwrap_or(&cell_manager.cells_root).join("volumes").join(vid);
+            let volumes_dir = cell_manager
+                .cells_root
+                .parent()
+                .unwrap_or(&cell_manager.cells_root)
+                .join("volumes")
+                .join(vid);
             if !volumes_dir.exists() {
                 return (404, format!(r#"{{"error":"Volume not found: {}"}}"#, vid));
             }
@@ -1789,7 +1997,7 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 });
                 let _ = std::fs::write(
                     watch_dir.join(format!("{}.json", watch_id)),
-                    watch_meta.to_string()
+                    watch_meta.to_string(),
                 );
                 (200, watch_meta.to_string())
             } else {
@@ -1800,10 +2008,14 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
         // GET watch events (poll for changes)
         ("GET", ["v1", "cells", id, "files", "watch", watch_id]) => {
             if let Some(data_path) = cell_manager.get_cell_data_path(id) {
-                let watch_path = data_path.join("__watches__").join(format!("{}.json", watch_id));
+                let watch_path = data_path
+                    .join("__watches__")
+                    .join(format!("{}.json", watch_id));
                 if watch_path.exists() {
                     if let Ok(watch_data) = std::fs::read_to_string(&watch_path) {
-                        if let Ok(watch_meta) = serde_json::from_str::<serde_json::Value>(&watch_data) {
+                        if let Ok(watch_meta) =
+                            serde_json::from_str::<serde_json::Value>(&watch_data)
+                        {
                             let watched_path = watch_meta["path"].as_str().unwrap_or("");
                             let target = data_path.join(watched_path);
                             // List current state of watched directory
@@ -1820,11 +2032,17 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                                     }
                                 }
                             }
-                            return (200, serde_json::to_string(&events).unwrap_or_else(|_| "[]".to_string()));
+                            return (
+                                200,
+                                serde_json::to_string(&events).unwrap_or_else(|_| "[]".to_string()),
+                            );
                         }
                     }
                 }
-                (404, format!(r#"{{"error":"Watch not found: {}"}}"#, watch_id))
+                (
+                    404,
+                    format!(r#"{{"error":"Watch not found: {}"}}"#, watch_id),
+                )
             } else {
                 (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id))
             }
@@ -1853,7 +2071,9 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 let mut combined = Vec::new();
                 for src in sources {
                     if let Some(src_path) = src.as_str() {
-                        if src_path.contains("..") { continue; } // skip traversal attempts
+                        if src_path.contains("..") {
+                            continue;
+                        } // skip traversal attempts
                         let full = data_path.join(src_path);
                         if let Ok(bytes) = std::fs::read(&full) {
                             combined.extend_from_slice(&bytes);
@@ -1865,7 +2085,14 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                     let _ = std::fs::create_dir_all(parent);
                 }
                 match std::fs::write(&dest_full, &combined) {
-                    Ok(()) => (200, format!(r#"{{"status":"concatenated","destination":"{}","size":{}}}"#, dest, combined.len())),
+                    Ok(()) => (
+                        200,
+                        format!(
+                            r#"{{"status":"concatenated","destination":"{}","size":{}}}"#,
+                            dest,
+                            combined.len()
+                        ),
+                    ),
                     Err(e) => (500, format!(r#"{{"error":"{}"}}"#, e)),
                 }
             } else {
@@ -1910,24 +2137,34 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
             // Store proxy config in cell metadata
             match cell_manager.patch_metadata(id, {
                 let mut m = std::collections::HashMap::new();
-                m.insert("proxy_url".to_string(), body["proxy_url"].as_str().unwrap_or("").to_string());
+                m.insert(
+                    "proxy_url".to_string(),
+                    body["proxy_url"].as_str().unwrap_or("").to_string(),
+                );
                 m
             }) {
-                Ok(_) => (200, format!(r#"{{"status":"configured","proxy":{}}}"#, body)),
+                Ok(_) => (
+                    200,
+                    format!(r#"{{"status":"configured","proxy":{}}}"#, body),
+                ),
                 Err(e) => (404, format!(r#"{{"error":"{}"}}"#, e)),
             }
         }
 
         // ─── Network: Secured access token ───────────────────────
-        ("POST", ["v1", "cells", id, "access-token"]) => {
-            match cell_manager.get_cell(id) {
-                Some(_) => {
-                    let token = format!("sat_{}", uuid::Uuid::new_v4().to_string().replace("-", ""));
-                    (200, format!(r#"{{"access_token":"{}","cell_id":"{}","expires_in":3600}}"#, token, id))
-                }
-                None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
+        ("POST", ["v1", "cells", id, "access-token"]) => match cell_manager.get_cell(id) {
+            Some(_) => {
+                let token = format!("sat_{}", uuid::Uuid::new_v4().to_string().replace("-", ""));
+                (
+                    200,
+                    format!(
+                        r#"{{"access_token":"{}","cell_id":"{}","expires_in":3600}}"#,
+                        token, id
+                    ),
+                )
             }
-        }
+            None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
+        },
 
         // ─── Network: Connect storage bucket ─────────────────────
         ("POST", ["v1", "cells", id, "storage"]) => {
@@ -1976,7 +2213,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 } else {
                     Vec::new()
                 };
-                (200, serde_json::to_string(&events).unwrap_or_else(|_| "[]".to_string()))
+                (
+                    200,
+                    serde_json::to_string(&events).unwrap_or_else(|_| "[]".to_string()),
+                )
             } else {
                 (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id))
             }
@@ -1991,11 +2231,17 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 data.lines()
                     .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
                     .collect::<Vec<_>>()
-                    .into_iter().rev().take(100).collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .take(100)
+                    .collect::<Vec<_>>()
             } else {
                 Vec::new()
             };
-            (200, serde_json::to_string(&events).unwrap_or_else(|_| "[]".to_string()))
+            (
+                200,
+                serde_json::to_string(&events).unwrap_or_else(|_| "[]".to_string()),
+            )
         }
 
         // ─── Lifecycle: Webhook registration ─────────────────────
@@ -2008,7 +2254,9 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 Some(u) => u,
                 None => return (400, r#"{"error":"Missing 'url' field"}"#.to_string()),
             };
-            let events = body["events"].as_array().cloned()
+            let events = body["events"]
+                .as_array()
+                .cloned()
                 .unwrap_or_else(|| vec![serde_json::json!("*")]);
 
             let hooks_path = cell_manager.cells_root.join("__webhooks__.json");
@@ -2031,7 +2279,10 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                     .as_millis() as u64,
             });
             hooks.push(hook.clone());
-            let _ = std::fs::write(&hooks_path, serde_json::to_string_pretty(&hooks).unwrap_or_default());
+            let _ = std::fs::write(
+                &hooks_path,
+                serde_json::to_string_pretty(&hooks).unwrap_or_default(),
+            );
             (200, hook.to_string())
         }
 
@@ -2053,12 +2304,21 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 if let Ok(data) = std::fs::read_to_string(&hooks_path) {
                     if let Ok(mut hooks) = serde_json::from_str::<Vec<serde_json::Value>>(&data) {
                         hooks.retain(|h| h["webhook_id"].as_str() != Some(webhook_id));
-                        let _ = std::fs::write(&hooks_path, serde_json::to_string_pretty(&hooks).unwrap_or_default());
-                        return (200, format!(r#"{{"status":"deleted","webhook_id":"{}"}}"#, webhook_id));
+                        let _ = std::fs::write(
+                            &hooks_path,
+                            serde_json::to_string_pretty(&hooks).unwrap_or_default(),
+                        );
+                        return (
+                            200,
+                            format!(r#"{{"status":"deleted","webhook_id":"{}"}}"#, webhook_id),
+                        );
                     }
                 }
             }
-            (404, format!(r#"{{"error":"Webhook not found: {}"}}"#, webhook_id))
+            (
+                404,
+                format!(r#"{{"error":"Webhook not found: {}"}}"#, webhook_id),
+            )
         }
 
         // ─── Filesystem: Signed URL generation ───────────────────
@@ -2070,15 +2330,24 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                     // Generate a time-limited signed token (HMAC-like)
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default().as_secs();
-                    let token = format!("sup_{}_{}", &id.replace("-","")[..8], ts);
-                    let host = std::env::var("CELL_PUBLIC_HOST").unwrap_or_else(|_| "localhost".to_string());
-                    let port = std::env::var("CELL_PUBLIC_PORT").unwrap_or_else(|_| "8002".to_string());
+                        .unwrap_or_default()
+                        .as_secs();
+                    let token = format!("sup_{}_{}", &id.replace("-", "")[..8], ts);
+                    let host = std::env::var("CELL_PUBLIC_HOST")
+                        .unwrap_or_else(|_| "localhost".to_string());
+                    let port =
+                        std::env::var("CELL_PUBLIC_PORT").unwrap_or_else(|_| "8002".to_string());
                     let url = format!(
                         "http://{}:{}/v1/cells/{}/files/upload?path={}&token={}",
                         host, port, id, path, token
                     );
-                    (200, format!(r#"{{"upload_url":"{}","token":"{}","expires_in":3600,"path":"{}"}}"#, url, token, path))
+                    (
+                        200,
+                        format!(
+                            r#"{{"upload_url":"{}","token":"{}","expires_in":3600,"path":"{}"}}"#,
+                            url, token, path
+                        ),
+                    )
                 }
                 None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
             }
@@ -2091,15 +2360,24 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                 Some(_) => {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default().as_secs();
-                    let token = format!("sdl_{}_{}", &id.replace("-","")[..8], ts);
-                    let host = std::env::var("CELL_PUBLIC_HOST").unwrap_or_else(|_| "localhost".to_string());
-                    let port = std::env::var("CELL_PUBLIC_PORT").unwrap_or_else(|_| "8002".to_string());
+                        .unwrap_or_default()
+                        .as_secs();
+                    let token = format!("sdl_{}_{}", &id.replace("-", "")[..8], ts);
+                    let host = std::env::var("CELL_PUBLIC_HOST")
+                        .unwrap_or_else(|_| "localhost".to_string());
+                    let port =
+                        std::env::var("CELL_PUBLIC_PORT").unwrap_or_else(|_| "8002".to_string());
                     let url = format!(
                         "http://{}:{}/v1/cells/{}/files/download?path={}&token={}",
                         host, port, id, path, token
                     );
-                    (200, format!(r#"{{"download_url":"{}","token":"{}","expires_in":3600,"path":"{}"}}"#, url, token, path))
+                    (
+                        200,
+                        format!(
+                            r#"{{"download_url":"{}","token":"{}","expires_in":3600,"path":"{}"}}"#,
+                            url, token, path
+                        ),
+                    )
                 }
                 None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
             }
@@ -2114,12 +2392,18 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
                     let mut sent = 0;
                     for chunk in arr {
                         if let Some(data) = chunk.as_str() {
-                            if cell_manager.send_stdin(cmd_id, data.as_bytes().to_vec()).is_ok() {
+                            if cell_manager
+                                .send_stdin(cmd_id, data.as_bytes().to_vec())
+                                .is_ok()
+                            {
                                 sent += 1;
                             }
                         }
                     }
-                    (200, format!(r#"{{"status":"streamed","chunks_sent":{}}}"#, sent))
+                    (
+                        200,
+                        format!(r#"{{"status":"streamed","chunks_sent":{}}}"#, sent),
+                    )
                 }
                 None => {
                     // Single data field
@@ -2228,25 +2512,23 @@ fn handle_request_inner(req: &HttpRequest, cell_manager: &CellManager) -> (u16, 
         }
 
         // ─── Network: SSH tunnel info ────────────────────────────
-        ("GET", ["v1", "cells", id, "ssh"]) => {
-            match cell_manager.get_cell(id) {
-                Some(_) => {
-                    let host = std::env::var("CELL_PUBLIC_HOST")
-                        .unwrap_or_else(|_| "localhost".to_string());
-                    let result = serde_json::json!({
-                        "cell_id": id,
-                        "ssh_host": host,
-                        "ssh_port": 2222,
-                        "ssh_user": "sandbox",
-                        "status": "available",
-                        "connection_string": format!("ssh sandbox@{} -p 2222", host),
-                        "note": "SSH access requires the 'ssh-enabled' template. Start with Cell(template='ssh-enabled')."
-                    });
-                    (200, result.to_string())
-                }
-                None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
+        ("GET", ["v1", "cells", id, "ssh"]) => match cell_manager.get_cell(id) {
+            Some(_) => {
+                let host =
+                    std::env::var("CELL_PUBLIC_HOST").unwrap_or_else(|_| "localhost".to_string());
+                let result = serde_json::json!({
+                    "cell_id": id,
+                    "ssh_host": host,
+                    "ssh_port": 2222,
+                    "ssh_user": "sandbox",
+                    "status": "available",
+                    "connection_string": format!("ssh sandbox@{} -p 2222", host),
+                    "note": "SSH access requires the 'ssh-enabled' template. Start with Cell(template='ssh-enabled')."
+                });
+                (200, result.to_string())
             }
-        }
+            None => (404, format!(r#"{{"error":"Cell not found: {}"}}"#, id)),
+        },
 
         // ─── Network: Custom domain management ───────────────────
         ("POST", ["v1", "cells", id, "domains"]) => {
@@ -2341,13 +2623,17 @@ message CellMetrics { uint64 executions = 1; uint64 uptime_ms = 2; }
 message LogEntries { repeated LogEntry entries = 1; }
 message LogEntry { string execution_id = 1; string timestamp = 2; int32 exit_code = 3; }
 "#;
-            (200, serde_json::json!({"proto": proto, "version": "v1"}).to_string())
+            (
+                200,
+                serde_json::json!({"proto": proto, "version": "v1"}).to_string(),
+            )
         }
 
         // ─── Catch-all ──────────────────────────────────────────
-        _ => {
-            (404, format!(r#"{{"error":"Not found: {} {}"}}"#, req.method, req.path))
-        }
+        _ => (
+            404,
+            format!(r#"{{"error":"Not found: {} {}"}}"#, req.method, req.path),
+        ),
     }
 }
 
@@ -2364,15 +2650,15 @@ pub fn run_cell_api(
 ) {
     eprintln!("[.cell] API thread {} started", thread_id);
 
-    
-    let mut ip_counts: std::collections::HashMap<String, (u64, std::time::Instant)> = std::collections::HashMap::new();
+    let mut ip_counts: std::collections::HashMap<String, (u64, std::time::Instant)> =
+        std::collections::HashMap::new();
     let max_reqs_per_sec = 200;
 
-for stream in listener.incoming() {
+    for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
                 let _ = stream.set_nodelay(true);
-                
+
                 // HTTP/1.1 keep-alive loop — handle multiple requests per connection
                 // This eliminates TCP+TLS handshake overhead for persistent sessions
                 let max_keepalive_requests = 200;
@@ -2383,12 +2669,19 @@ for stream in listener.incoming() {
                     };
 
                     // Check if client wants keep-alive
-                    
+
                     // Rate limiting logic based on IP (X-Forwarded-For or Peer Addr)
-                    let client_ip = req.headers.get("x-forwarded-for")
+                    let client_ip = req
+                        .headers
+                        .get("x-forwarded-for")
                         .map(|s| s.split(',').next().unwrap_or("").trim().to_string())
-                        .unwrap_or_else(|| stream.peer_addr().map(|a| a.ip().to_string()).unwrap_or_default());
-                    
+                        .unwrap_or_else(|| {
+                            stream
+                                .peer_addr()
+                                .map(|a| a.ip().to_string())
+                                .unwrap_or_default()
+                        });
+
                     if !client_ip.is_empty() {
                         let now = std::time::Instant::now();
                         let entry = ip_counts.entry(client_ip.clone()).or_insert((0, now));
@@ -2398,13 +2691,19 @@ for stream in listener.incoming() {
                         } else {
                             entry.0 += 1;
                             if entry.0 > max_reqs_per_sec {
-                                send_json_keepalive(&mut stream, 429, r#"{"error":"rate_limit_exceeded"}"#, false);
+                                send_json_keepalive(
+                                    &mut stream,
+                                    429,
+                                    r#"{"error":"rate_limit_exceeded"}"#,
+                                    false,
+                                );
                                 break;
                             }
                         }
                     }
 
-let wants_keepalive = req.headers
+                    let wants_keepalive = req
+                        .headers
                         .get("connection")
                         .map(|v| v.to_lowercase().contains("keep-alive"))
                         .unwrap_or(false);
@@ -2412,7 +2711,9 @@ let wants_keepalive = req.headers
                     // Handle CORS preflight — no auth required
                     if req.method == "OPTIONS" {
                         send_cors_preflight(&mut stream);
-                        if !wants_keepalive { break; }
+                        if !wants_keepalive {
+                            break;
+                        }
                         continue;
                     }
 
@@ -2420,7 +2721,11 @@ let wants_keepalive = req.headers
                     let path_base = req.path.split('?').next().unwrap_or("");
                     if req.method == "GET" {
                         // Check for exact path match in static pages
-                        let lookup = if path_base == "/" { "/".to_string() } else { path_base.to_string() };
+                        let lookup = if path_base == "/" {
+                            "/".to_string()
+                        } else {
+                            path_base.to_string()
+                        };
                         if let Some(html) = static_pages.get(&lookup) {
                             send_html(&mut stream, html);
                             break; // HTML pages always close
@@ -2432,13 +2737,16 @@ let wants_keepalive = req.headers
                         let (status, body, extra) = handle_request(&req, &cell_manager);
                         let hdr = extra.as_ref().map(|(k, v)| (k.as_str(), v.as_str()));
                         send_json_with_header(&mut stream, status, &body, wants_keepalive, hdr);
-                        if !wants_keepalive { break; }
+                        if !wants_keepalive {
+                            break;
+                        }
                         continue;
                     }
 
                     // ── API Key Authentication ──────────────────────
                     if !api_key.is_empty() {
-                        let authorized = req.headers
+                        let authorized = req
+                            .headers
                             .get("authorization")
                             .map(|v| {
                                 v.strip_prefix("Bearer ")
@@ -2449,8 +2757,11 @@ let wants_keepalive = req.headers
                             .unwrap_or(false);
 
                         if !authorized {
-                            send_json(&mut stream, 401,
-                                r#"{"error":"Unauthorized — provide Authorization: Bearer <api_key>"}"#);
+                            send_json(
+                                &mut stream,
+                                401,
+                                r#"{"error":"Unauthorized — provide Authorization: Bearer <api_key>"}"#,
+                            );
                             break; // Close on auth failure
                         }
                     }
@@ -2459,8 +2770,8 @@ let wants_keepalive = req.headers
                     // POST /v1/cells/{id}/exec/stream → SSE events
                     if req.method == "POST" && path_base.ends_with("/exec/stream") {
                         // Parse cell_id from path: /v1/cells/{id}/exec/stream
-                        let stream_segments: Vec<&str> = path_base.split('/')
-                            .filter(|s| !s.is_empty()).collect();
+                        let stream_segments: Vec<&str> =
+                            path_base.split('/').filter(|s| !s.is_empty()).collect();
                         if stream_segments.len() == 5
                             && stream_segments[0] == "v1"
                             && stream_segments[1] == "cells"
@@ -2471,8 +2782,11 @@ let wants_keepalive = req.headers
                             let body: serde_json::Value = match serde_json::from_str(&req.body) {
                                 Ok(v) => v,
                                 Err(e) => {
-                                    send_json(&mut stream, 400,
-                                        &format!(r#"{{"error":"Invalid JSON: {}"}}"#, e));
+                                    send_json(
+                                        &mut stream,
+                                        400,
+                                        &format!(r#"{{"error":"Invalid JSON: {}"}}"#, e),
+                                    );
                                     continue;
                                 }
                             };
@@ -2480,8 +2794,11 @@ let wants_keepalive = req.headers
                             let code = match body["code"].as_str() {
                                 Some(c) => c.to_string(),
                                 None => {
-                                    send_json(&mut stream, 400,
-                                        r#"{"error":"Missing 'code' field"}"#);
+                                    send_json(
+                                        &mut stream,
+                                        400,
+                                        r#"{"error":"Missing 'code' field"}"#,
+                                    );
                                     continue;
                                 }
                             };
@@ -2498,7 +2815,8 @@ let wants_keepalive = req.headers
                             let _ = stream.flush();
 
                             // Execute code
-                            let is_persistent = cell_manager.get_cell(cell_id)
+                            let is_persistent = cell_manager
+                                .get_cell(cell_id)
                                 .map(|info| info.persistent)
                                 .unwrap_or(false);
 
@@ -2561,7 +2879,9 @@ let wants_keepalive = req.headers
                     let (status, body, extra) = handle_request(&req, &cell_manager);
                     let hdr = extra.as_ref().map(|(k, v)| (k.as_str(), v.as_str()));
                     send_json_with_header(&mut stream, status, &body, wants_keepalive, hdr);
-                    if !wants_keepalive { break; }
+                    if !wants_keepalive {
+                        break;
+                    }
                 } // end keep-alive loop
             }
             Err(e) => {
@@ -2610,7 +2930,8 @@ mod tests {
     }
 
     fn test_cell_manager() -> CellManager {
-        let root = std::env::temp_dir().join(format!("synapse-cell-api-test-{}", uuid::Uuid::new_v4()));
+        let root =
+            std::env::temp_dir().join(format!("synapse-cell-api-test-{}", uuid::Uuid::new_v4()));
         let cells_root = root.join("cells");
         let template_dir = root.join("templates-src");
         std::fs::create_dir_all(&cells_root).expect("cells root");

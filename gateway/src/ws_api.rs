@@ -1,8 +1,8 @@
+use serde_json::json;
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
-use tungstenite::{accept_hdr, Message};
 use tungstenite::handshake::server::{Request, Response};
-use serde_json::json;
+use tungstenite::{accept_hdr, Message};
 
 use crate::cell::CellManager;
 
@@ -50,7 +50,11 @@ fn handle_ws_connection(stream: TcpStream, cell_manager: Arc<CellManager>) {
 
     let cell_id = extracted_cell_id;
     if cell_id.is_empty() {
-        let _ = websocket.send(Message::Text(json!({"error": "Invalid WebSocket path"}).to_string().into()));
+        let _ = websocket.send(Message::Text(
+            json!({"error": "Invalid WebSocket path"})
+                .to_string()
+                .into(),
+        ));
         let _ = websocket.close(None);
         return;
     }
@@ -72,17 +76,28 @@ fn handle_repl_connection(
 ) {
     if let Some(info) = cell_manager.get_cell(&cell_id) {
         if !info.persistent {
-            let _ = websocket.send(Message::Text(json!({"error": "Cell must be persistent for WS terminal"}).to_string().into()));
+            let _ = websocket.send(Message::Text(
+                json!({"error": "Cell must be persistent for WS terminal"})
+                    .to_string()
+                    .into(),
+            ));
             let _ = websocket.close(None);
             return;
         }
     } else {
-        let _ = websocket.send(Message::Text(json!({"error": "Cell not found"}).to_string().into()));
+        let _ = websocket.send(Message::Text(
+            json!({"error": "Cell not found"}).to_string().into(),
+        ));
         let _ = websocket.close(None);
         return;
     }
 
-    if std::env::var("CELL_VERBOSE").is_ok() { eprintln!("[.cell] WebSocket REPL connected for cell {}", &cell_id[..8]); }
+    if std::env::var("CELL_VERBOSE").is_ok() {
+        eprintln!(
+            "[.cell] WebSocket REPL connected for cell {}",
+            &cell_id[..8]
+        );
+    }
 
     loop {
         let msg = match websocket.read() {
@@ -134,7 +149,12 @@ fn handle_repl_connection(
         }
     }
 
-    if std::env::var("CELL_VERBOSE").is_ok() { eprintln!("[.cell] WebSocket REPL disconnected for cell {}", &cell_id[..8]); }
+    if std::env::var("CELL_VERBOSE").is_ok() {
+        eprintln!(
+            "[.cell] WebSocket REPL disconnected for cell {}",
+            &cell_id[..8]
+        );
+    }
 }
 
 // ─── PTY terminal (Sprint A Batch 3) ───────────────────────────────
@@ -156,7 +176,9 @@ fn handle_pty_connection(
         Some(p) => p,
         None => {
             let _ = websocket.send(Message::Text(
-                json!({"type":"error","message":"Cell not found"}).to_string().into()
+                json!({"type":"error","message":"Cell not found"})
+                    .to_string()
+                    .into(),
             ));
             return;
         }
@@ -179,17 +201,25 @@ fn handle_pty_connection(
         Ok(c) => c,
         Err(e) => {
             let _ = websocket.send(Message::Text(
-                json!({"type":"error","message": format!("Shell spawn failed: {}", e)}).to_string().into()
+                json!({"type":"error","message": format!("Shell spawn failed: {}", e)})
+                    .to_string()
+                    .into(),
             ));
             return;
         }
     };
 
     let pid = child.id();
-    if std::env::var("CELL_VERBOSE").is_ok() { eprintln!("[.cell] PTY connected for cell {} (pid {})", &cell_id[..8], pid); }
+    if std::env::var("CELL_VERBOSE").is_ok() {
+        eprintln!(
+            "[.cell] PTY connected for cell {} (pid {})",
+            &cell_id[..8],
+            pid
+        );
+    }
 
     let _ = websocket.send(Message::Text(
-        json!({"type":"connected","pid":pid}).to_string().into()
+        json!({"type":"connected","pid":pid}).to_string().into(),
     ));
 
     let mut child_stdin = child.stdin.take().unwrap();
@@ -209,7 +239,9 @@ fn handle_pty_connection(
             loop {
                 match r.read(&mut buf) {
                     Ok(0) | Err(_) => break,
-                    Ok(n) => { let _ = tx1.send(buf[..n].to_vec()); }
+                    Ok(n) => {
+                        let _ = tx1.send(buf[..n].to_vec());
+                    }
                 }
             }
         })
@@ -225,7 +257,9 @@ fn handle_pty_connection(
             loop {
                 match r.read(&mut buf) {
                     Ok(0) | Err(_) => break,
-                    Ok(n) => { let _ = tx2.send(buf[..n].to_vec()); }
+                    Ok(n) => {
+                        let _ = tx2.send(buf[..n].to_vec());
+                    }
                 }
             }
         })
@@ -238,15 +272,20 @@ fn handle_pty_connection(
             if websocket.send(Message::Binary(data.into())).is_err() {
                 let _ = child.kill();
                 let _ = child.wait();
-                if std::env::var("CELL_VERBOSE").is_ok() { eprintln!("[.cell] PTY disconnected for cell {} (WS send err)", &cell_id[..8]); }
+                if std::env::var("CELL_VERBOSE").is_ok() {
+                    eprintln!(
+                        "[.cell] PTY disconnected for cell {} (WS send err)",
+                        &cell_id[..8]
+                    );
+                }
                 return;
             }
         }
 
         // Read incoming WS frame (short timeout to allow output drain)
-        let _ = websocket.get_ref().set_read_timeout(
-            Some(std::time::Duration::from_millis(10))
-        );
+        let _ = websocket
+            .get_ref()
+            .set_read_timeout(Some(std::time::Duration::from_millis(10)));
         match websocket.read() {
             Ok(Message::Binary(data)) => {
                 // Raw bytes -> shell stdin
@@ -259,9 +298,8 @@ fn handle_pty_connection(
                     match v["type"].as_str() {
                         Some("resize") => {
                             // Phase A: acknowledge only (no TIOCSWINSZ without real PTY)
-                            let _ = websocket.send(Message::Text(
-                                json!({"type":"resized"}).to_string().into()
-                            ));
+                            let _ = websocket
+                                .send(Message::Text(json!({"type":"resized"}).to_string().into()));
                         }
                         Some("kill") => break,
                         Some("stdin") => {
@@ -282,7 +320,8 @@ fn handle_pty_connection(
             }
             Ok(Message::Close(_)) => break,
             Err(tungstenite::error::Error::Io(ref e))
-                if e.kind() == std::io::ErrorKind::WouldBlock => {
+                if e.kind() == std::io::ErrorKind::WouldBlock =>
+            {
                 // Timeout on read — normal, continue drain loop
             }
             Err(tungstenite::error::Error::ConnectionClosed)
@@ -295,5 +334,11 @@ fn handle_pty_connection(
     // Cleanup
     let _ = child.kill();
     let _ = child.wait();
-    if std::env::var("CELL_VERBOSE").is_ok() { eprintln!("[.cell] PTY disconnected for cell {} (pid {})", &cell_id[..8], pid); }
+    if std::env::var("CELL_VERBOSE").is_ok() {
+        eprintln!(
+            "[.cell] PTY disconnected for cell {} (pid {})",
+            &cell_id[..8],
+            pid
+        );
+    }
 }

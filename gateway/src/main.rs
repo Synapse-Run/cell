@@ -31,21 +31,21 @@ mod cell;
 mod cell_api;
 mod compiler;
 mod inference;
+pub mod license;
 mod transpiler;
 mod util;
 mod ws_api;
-pub mod license;
 
 use util::resolve_synapse_root;
 
-use sha2::{Sha256, Digest};
+use moka::sync::Cache;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream, IpAddr};
+use std::net::{IpAddr, TcpListener, TcpStream};
 use std::sync::Arc;
 use std::time::Instant;
 use wasmtime::*;
-use moka::sync::Cache;
 
 // Z3 PURGE 2026-04-15: removed `use z3::ast::Ast;` and `enum Z3ExprResult`.
 // The Z3 SMT solver belongs to the research swarm, not the commercial Cell
@@ -143,197 +143,308 @@ fn extract_content_length(headers: &[u8]) -> usize {
 /// Called once per thread to build a thread-local linker.
 fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::error::Error>> {
     // --- print(ptr: i32, len: i32) -> () ---
-    linker.func_wrap("env", "print", |mut caller: Caller<'_, GatewayState>, ptr: i32, len: i32| {
-        let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-        let data = mem.data(&caller);
-        let s = ptr as usize;
-        let e = s + len as usize;
-        if e <= data.len() {
-            let chunk = data[s..e].to_vec();
-            caller.data_mut().stdout_buf.extend_from_slice(&chunk);
-        }
-    })?;
+    linker.func_wrap(
+        "env",
+        "print",
+        |mut caller: Caller<'_, GatewayState>, ptr: i32, len: i32| {
+            let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let data = mem.data(&caller);
+            let s = ptr as usize;
+            let e = s + len as usize;
+            if e <= data.len() {
+                let chunk = data[s..e].to_vec();
+                caller.data_mut().stdout_buf.extend_from_slice(&chunk);
+            }
+        },
+    )?;
 
     // --- Standard FFI stubs (sync.py always injects these) ---
     // --- tcp_connect(addr_ptr, len) -> stream_id ---
-    linker.func_wrap("env", "tcp_connect", |mut caller: Caller<'_, GatewayState>, addr_ptr: i64, len: i64| -> i64 {
-        let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-        let data = mem.data(&caller);
-        let start = addr_ptr as usize;
-        let end = start + len as usize;
-        if end > data.len() { return -1; }
-        
-        let addr_str = String::from_utf8_lossy(&data[start..end]).to_string();
-        match std::net::TcpStream::connect(addr_str) {
-            Ok(stream) => {
-                let _ = stream.set_nonblocking(true); // Default to non-blocking for polling
-                let streams = &mut caller.data_mut().p2p_streams;
-                if let Some(pos) = streams.iter().position(|x| x.is_none()) {
-                    streams[pos] = Some(stream);
-                    pos as i64
-                } else {
-                    let id = streams.len();
-                    streams.push(Some(stream));
-                    id as i64
-                }
+    linker.func_wrap(
+        "env",
+        "tcp_connect",
+        |mut caller: Caller<'_, GatewayState>, addr_ptr: i64, len: i64| -> i64 {
+            let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let data = mem.data(&caller);
+            let start = addr_ptr as usize;
+            let end = start + len as usize;
+            if end > data.len() {
+                return -1;
             }
-            Err(_) => -1,
-        }
-    })?;
+
+            let addr_str = String::from_utf8_lossy(&data[start..end]).to_string();
+            match std::net::TcpStream::connect(addr_str) {
+                Ok(stream) => {
+                    let _ = stream.set_nonblocking(true); // Default to non-blocking for polling
+                    let streams = &mut caller.data_mut().p2p_streams;
+                    if let Some(pos) = streams.iter().position(|x| x.is_none()) {
+                        streams[pos] = Some(stream);
+                        pos as i64
+                    } else {
+                        let id = streams.len();
+                        streams.push(Some(stream));
+                        id as i64
+                    }
+                }
+                Err(_) => -1,
+            }
+        },
+    )?;
 
     // --- p2p_receive(stream_id, out_ptr, max_len) -> bytes_read ---
-    linker.func_wrap("env", "p2p_receive", |mut caller: Caller<'_, GatewayState>, stream_id: i64, out_ptr: i64, max_len: i64| -> i64 {
-        if stream_id < 0 || stream_id as usize >= caller.data().p2p_streams.len() { return -1; }
-        
-        // We temporarily extract the socket to avoid mutability borrowing issues against memory
-        let mut stream = caller.data_mut().p2p_streams[stream_id as usize].take();
-        
-        if let Some(ref mut tcp) = stream {
-            let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-            let start = out_ptr as usize;
-            let end = start + max_len as usize;
-            let data = mem.data_mut(&mut caller);
-            if end > data.len() { 
-                caller.data_mut().p2p_streams[stream_id as usize] = stream; // put it back
-                return -1; 
+    linker.func_wrap(
+        "env",
+        "p2p_receive",
+        |mut caller: Caller<'_, GatewayState>, stream_id: i64, out_ptr: i64, max_len: i64| -> i64 {
+            if stream_id < 0 || stream_id as usize >= caller.data().p2p_streams.len() {
+                return -1;
             }
-            
-            use std::io::Read;
-            // Stream is non-blocking
-            let res = match tcp.read(&mut data[start..end]) {
-                Ok(n) => n as i64,
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => 0,
-                Err(_) => -1, // Connection dropped
-            };
-            
-            if res != -1 {
-                caller.data_mut().p2p_streams[stream_id as usize] = stream; // put it back
+
+            // We temporarily extract the socket to avoid mutability borrowing issues against memory
+            let mut stream = caller.data_mut().p2p_streams[stream_id as usize].take();
+
+            if let Some(ref mut tcp) = stream {
+                let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+                let start = out_ptr as usize;
+                let end = start + max_len as usize;
+                let data = mem.data_mut(&mut caller);
+                if end > data.len() {
+                    caller.data_mut().p2p_streams[stream_id as usize] = stream; // put it back
+                    return -1;
+                }
+
+                use std::io::Read;
+                // Stream is non-blocking
+                let res = match tcp.read(&mut data[start..end]) {
+                    Ok(n) => n as i64,
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => 0,
+                    Err(_) => -1, // Connection dropped
+                };
+
+                if res != -1 {
+                    caller.data_mut().p2p_streams[stream_id as usize] = stream; // put it back
+                }
+                res
+            } else {
+                -1
             }
-            res
-        } else {
-            -1
-        }
-    })?;
+        },
+    )?;
 
     // --- p2p_broadcast(channel_id, buf_ptr, buf_len) -> 0 ---
-    linker.func_wrap("env", "p2p_broadcast", |mut caller: Caller<'_, GatewayState>, _channel_id: i64, buf_ptr: i64, buf_len: i64| -> i64 {
-        let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-        let data = mem.data(&caller);
-        let start = buf_ptr as usize;
-        let end = start + buf_len as usize;
-        if end > data.len() { return -1; }
-
-        let buf = data[start..end].to_vec();
-        let mut failed_streams = Vec::new();
-
-        use std::io::Write;
-        for (i, stream_opt) in caller.data_mut().p2p_streams.iter_mut().enumerate() {
-            if let Some(stream) = stream_opt {
-                if stream.write_all(&buf).is_err() {
-                    failed_streams.push(i);
-                }
+    linker.func_wrap(
+        "env",
+        "p2p_broadcast",
+        |mut caller: Caller<'_, GatewayState>,
+         _channel_id: i64,
+         buf_ptr: i64,
+         buf_len: i64|
+         -> i64 {
+            let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let data = mem.data(&caller);
+            let start = buf_ptr as usize;
+            let end = start + buf_len as usize;
+            if end > data.len() {
+                return -1;
             }
-        }
-        
-        for i in failed_streams {
-            caller.data_mut().p2p_streams[i] = None;
-        }
-        0
-    })?;
 
-    linker.func_wrap("env", "p2p_discover", |_: Caller<'_, GatewayState>, _a: i64| -> i64 { -1 })?;
-    linker.func_wrap("env", "p2p_receive_compute", |_: Caller<'_, GatewayState>, _a: i64, _b: i64| -> i64 { -1 })?;
-    linker.func_wrap("env", "p2p_respond_compute", |_: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64| -> i64 { -1 })?;
-    linker.func_wrap("env", "p2p_request_compute", |_: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64| -> i64 { -1 })?;
-    // sync.py currently emits a superset of standard FFI imports for compiled modules.
-    // The current product slice does not rely on these GPU/model-loading calls, so we
-    // define inert stubs to keep gateway startup aligned with the bounded execution path.
-    linker.func_wrap("env", "gpu_matmul", |_: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64, _d: i64, _e: i64, _f: i64| -> i64 { -1 })?;
-    linker.func_wrap("env", "gpu_relu", |_: Caller<'_, GatewayState>, _a: i64, _b: i64| -> i64 { -1 })?;
-    linker.func_wrap("env", "gpu_softmax", |_: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64| -> i64 { -1 })?;
-    linker.func_wrap("env", "gpu_silu", |_: Caller<'_, GatewayState>, _a: i64, _b: i64| -> i64 { -1 })?;
-    linker.func_wrap("env", "gpu_layernorm", |_: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64, _d: i64| -> i64 { -1 })?;
-    linker.func_wrap("env", "gpu_add", |_: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64| -> i64 { -1 })?;
-    linker.func_wrap("env", "load_weights", |mut caller: Caller<'_, GatewayState>, dst_ptr: i64, _weight_id: i64, offset: i64, size_in_bytes: i64| -> i64 {
-        const MAX_MODEL_SIZE: u64 = 89_456_640; // Exact size of synapse_weights.bin
-        // Boundary guard: prevent OOB reads past the model binary
-        if offset < 0 || size_in_bytes <= 0 || (offset as u64) + (size_in_bytes as u64) > MAX_MODEL_SIZE {
-            return -2; // OOB sentinel
-        }
-        let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
-        let mut p = std::env::current_dir().unwrap();
-        while !p.join("models").exists() && p.parent().is_some() {
-            p = p.parent().unwrap().to_path_buf();
-        }
-        let bin_path = p.join("models").join("synapse-qwen-0.5b").join("synapse_weights.bin");
-        if let Ok(mut file) = std::fs::File::open(&bin_path) {
-            use std::io::{Seek, Read};
-            if file.seek(std::io::SeekFrom::Start(offset as u64)).is_ok() {
-                let mut buf = vec![0u8; size_in_bytes as usize];
-                if file.read_exact(&mut buf).is_ok() {
-                    let data = mem.data_mut(&mut caller);
-                    let dp = dst_ptr as usize;
-                    if dp + buf.len() <= data.len() {
-                        data[dp..dp+buf.len()].copy_from_slice(&buf);
-                        return 0; // Success
+            let buf = data[start..end].to_vec();
+            let mut failed_streams = Vec::new();
+
+            use std::io::Write;
+            for (i, stream_opt) in caller.data_mut().p2p_streams.iter_mut().enumerate() {
+                if let Some(stream) = stream_opt {
+                    if stream.write_all(&buf).is_err() {
+                        failed_streams.push(i);
                     }
                 }
             }
-        }
-        -1 // File I/O error
-    })?;
-    linker.func_wrap("env", "weight_info", |_: Caller<'_, GatewayState>, _a: i64| -> i64 { -1 })?;
-    linker.func_wrap("env", "crypto_sign", |_: Caller<'_, GatewayState>, _a: i32, _b: i32, _c: i32, _d: i32| {})?;
-    linker.func_wrap("env", "crypto_verify", |_: Caller<'_, GatewayState>, _a: i32, _b: i32, _c: i32, _d: i32| -> i32 { 0 })?;
+
+            for i in failed_streams {
+                caller.data_mut().p2p_streams[i] = None;
+            }
+            0
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "p2p_discover",
+        |_: Caller<'_, GatewayState>, _a: i64| -> i64 { -1 },
+    )?;
+    linker.func_wrap(
+        "env",
+        "p2p_receive_compute",
+        |_: Caller<'_, GatewayState>, _a: i64, _b: i64| -> i64 { -1 },
+    )?;
+    linker.func_wrap(
+        "env",
+        "p2p_respond_compute",
+        |_: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64| -> i64 { -1 },
+    )?;
+    linker.func_wrap(
+        "env",
+        "p2p_request_compute",
+        |_: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64| -> i64 { -1 },
+    )?;
+    // sync.py currently emits a superset of standard FFI imports for compiled modules.
+    // The current product slice does not rely on these GPU/model-loading calls, so we
+    // define inert stubs to keep gateway startup aligned with the bounded execution path.
+    linker.func_wrap(
+        "env",
+        "gpu_matmul",
+        |_: Caller<'_, GatewayState>,
+         _a: i64,
+         _b: i64,
+         _c: i64,
+         _d: i64,
+         _e: i64,
+         _f: i64|
+         -> i64 { -1 },
+    )?;
+    linker.func_wrap(
+        "env",
+        "gpu_relu",
+        |_: Caller<'_, GatewayState>, _a: i64, _b: i64| -> i64 { -1 },
+    )?;
+    linker.func_wrap(
+        "env",
+        "gpu_softmax",
+        |_: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64| -> i64 { -1 },
+    )?;
+    linker.func_wrap(
+        "env",
+        "gpu_silu",
+        |_: Caller<'_, GatewayState>, _a: i64, _b: i64| -> i64 { -1 },
+    )?;
+    linker.func_wrap(
+        "env",
+        "gpu_layernorm",
+        |_: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64, _d: i64| -> i64 { -1 },
+    )?;
+    linker.func_wrap(
+        "env",
+        "gpu_add",
+        |_: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64| -> i64 { -1 },
+    )?;
+    linker.func_wrap(
+        "env",
+        "load_weights",
+        |mut caller: Caller<'_, GatewayState>,
+         dst_ptr: i64,
+         _weight_id: i64,
+         offset: i64,
+         size_in_bytes: i64|
+         -> i64 {
+            const MAX_MODEL_SIZE: u64 = 89_456_640; // Exact size of synapse_weights.bin
+                                                    // Boundary guard: prevent OOB reads past the model binary
+            if offset < 0
+                || size_in_bytes <= 0
+                || (offset as u64) + (size_in_bytes as u64) > MAX_MODEL_SIZE
+            {
+                return -2; // OOB sentinel
+            }
+            let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
+            let mut p = std::env::current_dir().unwrap();
+            while !p.join("models").exists() && p.parent().is_some() {
+                p = p.parent().unwrap().to_path_buf();
+            }
+            let bin_path = p
+                .join("models")
+                .join("synapse-qwen-0.5b")
+                .join("synapse_weights.bin");
+            if let Ok(mut file) = std::fs::File::open(&bin_path) {
+                use std::io::{Read, Seek};
+                if file.seek(std::io::SeekFrom::Start(offset as u64)).is_ok() {
+                    let mut buf = vec![0u8; size_in_bytes as usize];
+                    if file.read_exact(&mut buf).is_ok() {
+                        let data = mem.data_mut(&mut caller);
+                        let dp = dst_ptr as usize;
+                        if dp + buf.len() <= data.len() {
+                            data[dp..dp + buf.len()].copy_from_slice(&buf);
+                            return 0; // Success
+                        }
+                    }
+                }
+            }
+            -1 // File I/O error
+        },
+    )?;
+    linker.func_wrap(
+        "env",
+        "weight_info",
+        |_: Caller<'_, GatewayState>, _a: i64| -> i64 { -1 },
+    )?;
+    linker.func_wrap(
+        "env",
+        "crypto_sign",
+        |_: Caller<'_, GatewayState>, _a: i32, _b: i32, _c: i32, _d: i32| {},
+    )?;
+    linker.func_wrap(
+        "env",
+        "crypto_verify",
+        |_: Caller<'_, GatewayState>, _a: i32, _b: i32, _c: i32, _d: i32| -> i32 { 0 },
+    )?;
 
     // --- ffi_numpy_dot(a_ptr, a_len, b_ptr, b_len, out_ptr) -> status ---
-    linker.func_wrap("env", "ffi_numpy_dot",
-        |mut caller: Caller<'_, GatewayState>, a_ptr: i64, a_len: i64, b_ptr: i64, b_len: i64, out_ptr: i64| -> i64 {
+    linker.func_wrap(
+        "env",
+        "ffi_numpy_dot",
+        |mut caller: Caller<'_, GatewayState>,
+         a_ptr: i64,
+         a_len: i64,
+         b_ptr: i64,
+         b_len: i64,
+         out_ptr: i64|
+         -> i64 {
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
-            
+
             let ap = a_ptr as usize;
             let al = a_len as usize;
             let bp = b_ptr as usize;
             let bl = b_len as usize;
-            
+
             // Assume f64 arrays, length in elements is len / 8.
             let a_elems = al / 8;
             let b_elems = bl / 8;
-            
-            if ap + al > data.len() || bp + bl > data.len() { return -1; }
-            
+
+            if ap + al > data.len() || bp + bl > data.len() {
+                return -1;
+            }
+
             // Extract f64 slices
             let mut a_vec = Vec::with_capacity(a_elems);
             for i in 0..a_elems {
                 let start = ap + i * 8;
-                let val = f64::from_le_bytes(data[start..start+8].try_into().unwrap());
+                let val = f64::from_le_bytes(data[start..start + 8].try_into().unwrap());
                 a_vec.push(val);
             }
             let mut b_vec = Vec::with_capacity(b_elems);
             for i in 0..b_elems {
                 let start = bp + i * 8;
-                let val = f64::from_le_bytes(data[start..start+8].try_into().unwrap());
+                let val = f64::from_le_bytes(data[start..start + 8].try_into().unwrap());
                 b_vec.push(val);
             }
-            
+
             // Inner product loop implementation
             let mut result: f64 = 0.0;
             let min_elems = std::cmp::min(a_elems, b_elems);
             for i in 0..min_elems {
                 result += a_vec[i] * b_vec[i];
             }
-            
+
             // Write result
             let op = out_ptr as usize;
             let data_mut = mem.data_mut(&mut caller);
-            if op + 8 > data_mut.len() { return -1; }
-            data_mut[op..op+8].copy_from_slice(&result.to_le_bytes());
-            
-            0
-        }
-    )?;
+            if op + 8 > data_mut.len() {
+                return -1;
+            }
+            data_mut[op..op + 8].copy_from_slice(&result.to_le_bytes());
 
+            0
+        },
+    )?;
 
     // --- host_debug(tag, addr) -> 0 ---
     linker.func_wrap("env", "host_debug",
@@ -369,26 +480,30 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
     // --- tcp_bind(port) -> listener_id ---
     // With thread-per-core, the listener is pre-injected into GatewayState.
     // tcp_bind just returns 0 (reusing the existing listener).
-    linker.func_wrap("env", "tcp_bind", |mut caller: Caller<'_, GatewayState>, port: i64| -> i64 {
-        let addr = format!("0.0.0.0:{}", port);
-        // Listener is pre-injected by thread-per-core; reuse it
-        if !caller.data().listeners.is_empty() {
-            eprintln!("[synapse-gateway] Reusing existing listener on {}", addr);
-            return 0;
-        }
-        match TcpListener::bind(&addr) {
-            Ok(listener) => {
-                eprintln!("[synapse-gateway] Listening on {}", addr);
-                let id = caller.data().listeners.len();
-                caller.data_mut().listeners.push(listener);
-                id as i64
+    linker.func_wrap(
+        "env",
+        "tcp_bind",
+        |mut caller: Caller<'_, GatewayState>, port: i64| -> i64 {
+            let addr = format!("0.0.0.0:{}", port);
+            // Listener is pre-injected by thread-per-core; reuse it
+            if !caller.data().listeners.is_empty() {
+                eprintln!("[synapse-gateway] Reusing existing listener on {}", addr);
+                return 0;
             }
-            Err(e) => {
-                eprintln!("[synapse-gateway] bind error: {}", e);
-                -1
+            match TcpListener::bind(&addr) {
+                Ok(listener) => {
+                    eprintln!("[synapse-gateway] Listening on {}", addr);
+                    let id = caller.data().listeners.len();
+                    caller.data_mut().listeners.push(listener);
+                    id as i64
+                }
+                Err(e) => {
+                    eprintln!("[synapse-gateway] bind error: {}", e);
+                    -1
+                }
             }
-        }
-    })?;
+        },
+    )?;
 
     // --- tcp_accept(listener_id) -> conn_id ---
     linker.func_wrap("env", "tcp_accept", |mut caller: Caller<'_, GatewayState>, lid: i64| -> i64 {
@@ -448,7 +563,9 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
     })?;
 
     // --- tcp_recv_raw(conn_id, ptr, max_len) -> bytes_read ---
-    linker.func_wrap("env", "tcp_recv_raw",
+    linker.func_wrap(
+        "env",
+        "tcp_recv_raw",
         |mut caller: Caller<'_, GatewayState>, cid: i64, ptr: i64, max_len: i64| -> i64 {
             let max = max_len as usize;
             let mut tmp = vec![0u8; max];
@@ -459,14 +576,17 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                         Ok(n) => n,
                         Err(_) => return -1,
                     };
-                    if n == 0 { return 0; }
+                    if n == 0 {
+                        return 0;
+                    }
 
                     let mut total = n;
 
                     // Smart retry for reverse proxies (Caddy):
                     // 1. If headers are incomplete (no \r\n\r\n), retry with timeout
                     // 2. If headers are complete but body is missing, retry with timeout
-                    let header_end_pos = tmp[..total].windows(4)
+                    let header_end_pos = tmp[..total]
+                        .windows(4)
                         .position(|w| w == b"\r\n\r\n")
                         .map(|p| p + 4);
 
@@ -487,29 +607,33 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                     };
 
                     if needs_more && total < max {
-                        let _ = stream.set_read_timeout(
-                            Some(std::time::Duration::from_millis(5))
-                        );
+                        let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(5)));
                         loop {
                             match stream.read(&mut tmp[total..]) {
                                 Ok(0) => break,
                                 Ok(n) => {
                                     total += n;
-                                    if total >= max { break; }
+                                    if total >= max {
+                                        break;
+                                    }
                                     // Re-check if we have enough data
-                                    let done = if let Some(hdr_end) = tmp[..total].windows(4)
+                                    let done = if let Some(hdr_end) = tmp[..total]
+                                        .windows(4)
                                         .position(|w| w == b"\r\n\r\n")
-                                        .map(|p| p + 4) {
+                                        .map(|p| p + 4)
+                                    {
                                         let cl = extract_content_length(&tmp[..hdr_end]);
                                         if cl > 0 {
                                             total - hdr_end >= cl
                                         } else {
-                                            true  // No content-length, headers are done
+                                            true // No content-length, headers are done
                                         }
                                     } else {
-                                        false  // Still no headers
+                                        false // Still no headers
                                     };
-                                    if done { break; }
+                                    if done {
+                                        break;
+                                    }
                                 }
                                 Err(_) => break,
                             }
@@ -524,20 +648,26 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data_mut(&mut caller);
             let start = ptr as usize;
-            if start + total > data.len() { return -1; }
+            if start + total > data.len() {
+                return -1;
+            }
             data[start..start + total].copy_from_slice(&tmp[..total]);
             total as i64
-        }
+        },
     )?;
 
     // --- tcp_send_raw(conn_id, ptr, len) -> bytes_sent ---
-    linker.func_wrap("env", "tcp_send_raw",
+    linker.func_wrap(
+        "env",
+        "tcp_send_raw",
         |mut caller: Caller<'_, GatewayState>, cid: i64, ptr: i64, len: i64| -> i64 {
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
             let start = ptr as usize;
             let end = start + len as usize;
-            if end > data.len() { return -1; }
+            if end > data.len() {
+                return -1;
+            }
             let buf = data[start..end].to_vec();
             let state = caller.data_mut();
             if let Some(Some(ref mut stream)) = state.connections.get_mut(cid as usize) {
@@ -548,11 +678,13 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             } else {
                 -1
             }
-        }
+        },
     )?;
 
     // --- tcp_close(conn_id) -> 0 on success ---
-    linker.func_wrap("env", "tcp_close",
+    linker.func_wrap(
+        "env",
+        "tcp_close",
         |mut caller: Caller<'_, GatewayState>, cid: i64| -> i64 {
             let state = caller.data_mut();
             let idx = cid as usize;
@@ -562,40 +694,59 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             } else {
                 -1
             }
-        }
+        },
     )?;
 
     // --- time_now() -> microseconds since start ---
-    linker.func_wrap("env", "time_now", |caller: Caller<'_, GatewayState>| -> i64 {
-        caller.data().epoch.elapsed().as_micros() as i64
-    })?;
+    linker.func_wrap(
+        "env",
+        "time_now",
+        |caller: Caller<'_, GatewayState>| -> i64 {
+            caller.data().epoch.elapsed().as_micros() as i64
+        },
+    )?;
 
     // --- sha256_hash(data_ptr, data_len, out_ptr) -> 32 (bytes written) ---
-    linker.func_wrap("env", "sha256_hash",
+    linker.func_wrap(
+        "env",
+        "sha256_hash",
         |mut caller: Caller<'_, GatewayState>, data_ptr: i64, data_len: i64, out_ptr: i64| -> i64 {
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
             let start = data_ptr as usize;
             let end = start + data_len as usize;
-            if end > data.len() { return -1; }
+            if end > data.len() {
+                return -1;
+            }
             let input = data[start..end].to_vec();
             let hash = Sha256::digest(&input);
             let out = out_ptr as usize;
-            if out + 32 > data.len() { return -1; }
+            if out + 32 > data.len() {
+                return -1;
+            }
             let mem_data = mem.data_mut(&mut caller);
             mem_data[out..out + 32].copy_from_slice(&hash);
             32
-        }
+        },
     )?;
 
     // --- env_get(key_ptr, key_len, val_out_ptr, val_max_len) -> val_len or -1 ---
-    linker.func_wrap("env", "env_get",
-        |mut caller: Caller<'_, GatewayState>, key_ptr: i64, key_len: i64, val_ptr: i64, val_max: i64| -> i64 {
+    linker.func_wrap(
+        "env",
+        "env_get",
+        |mut caller: Caller<'_, GatewayState>,
+         key_ptr: i64,
+         key_len: i64,
+         val_ptr: i64,
+         val_max: i64|
+         -> i64 {
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
             let ks = key_ptr as usize;
             let ke = ks + key_len as usize;
-            if ke > data.len() { return -1; }
+            if ke > data.len() {
+                return -1;
+            }
             let key = String::from_utf8_lossy(&data[ks..ke]).to_string();
             let val = if key == "API_KEY" {
                 String::from_utf8_lossy(&caller.data().api_key).to_string()
@@ -608,22 +759,35 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             let mem_data = mem.data_mut(&mut caller);
             mem_data[vs..vs + vl].copy_from_slice(&vb[..vl]);
             vl as i64
-        }
+        },
     )?;
 
     // --- host_fetch(url_ptr, url_len, out_ptr, max_len) -> bytes written or -1 ---
-    linker.func_wrap("env", "host_fetch",
-        |mut caller: Caller<'_, GatewayState>, url_ptr: i64, url_len: i64, out_ptr: i64, max_len: i64| -> i64 {
+    linker.func_wrap(
+        "env",
+        "host_fetch",
+        |mut caller: Caller<'_, GatewayState>,
+         url_ptr: i64,
+         url_len: i64,
+         out_ptr: i64,
+         max_len: i64|
+         -> i64 {
             let max_len = std::cmp::min(max_len, 10_000_000); // 10MB Host Memory Protection
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
             let s = url_ptr as usize;
             let e = s + url_len as usize;
-            if e > data.len() { return -1; }
+            if e > data.len() {
+                return -1;
+            }
             let url = String::from_utf8_lossy(&data[s..e]).to_string();
 
-            // SSRF Blockade 
-            if url.contains("169.254.169.254") || url.contains("127.0.") || url.contains("localhost") || url.contains("10.") {
+            // SSRF Blockade
+            if url.contains("169.254.169.254")
+                || url.contains("127.0.")
+                || url.contains("localhost")
+                || url.contains("10.")
+            {
                 return -1;
             }
 
@@ -636,7 +800,8 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                         let out = out_ptr as usize;
                         let data_mut = mem.data_mut(&mut caller);
                         if out + bytes_to_copy <= data_mut.len() {
-                            data_mut[out..out + bytes_to_copy].copy_from_slice(&buf[..bytes_to_copy]);
+                            data_mut[out..out + bytes_to_copy]
+                                .copy_from_slice(&buf[..bytes_to_copy]);
                             return bytes_to_copy as i64;
                         }
                     }
@@ -644,23 +809,34 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 }
                 Err(_) => -1,
             }
-        }
+        },
     )?;
 
     // --- host_fs_write(path_ptr, path_len, data_ptr, data_len) -> result (0 success, -1 err) ---
-    linker.func_wrap("env", "host_fs_write",
-        |mut caller: Caller<'_, GatewayState>, path_ptr: i64, path_len: i64, data_ptr: i64, data_len: i64| -> i64 {
+    linker.func_wrap(
+        "env",
+        "host_fs_write",
+        |mut caller: Caller<'_, GatewayState>,
+         path_ptr: i64,
+         path_len: i64,
+         data_ptr: i64,
+         data_len: i64|
+         -> i64 {
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
-            
+
             let ps = path_ptr as usize;
             let pe = ps + path_len as usize;
-            if pe > data.len() { return -1; }
+            if pe > data.len() {
+                return -1;
+            }
             let path_str = String::from_utf8_lossy(&data[ps..pe]).to_string();
 
             let ds = data_ptr as usize;
             let de = ds + data_len as usize;
-            if de > data.len() { return -1; }
+            if de > data.len() {
+                return -1;
+            }
             let write_data = &data[ds..de];
 
             // Resolve securely inside a sandbox_volumes directory
@@ -675,25 +851,38 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                     if !canon_parent.starts_with(&base_path) {
                         return -1; // Block Path Traversal
                     }
-                } else { return -1; }
-            } else { return -1; }
+                } else {
+                    return -1;
+                }
+            } else {
+                return -1;
+            }
 
             match std::fs::write(&target_path, write_data) {
                 Ok(_) => 0,
                 Err(_) => -1,
             }
-        }
+        },
     )?;
 
     // --- host_fs_read(path_ptr, path_len, out_ptr, max_len) -> bytes read or -1 ---
-    linker.func_wrap("env", "host_fs_read",
-        |mut caller: Caller<'_, GatewayState>, path_ptr: i64, path_len: i64, out_ptr: i64, max_len: i64| -> i64 {
+    linker.func_wrap(
+        "env",
+        "host_fs_read",
+        |mut caller: Caller<'_, GatewayState>,
+         path_ptr: i64,
+         path_len: i64,
+         out_ptr: i64,
+         max_len: i64|
+         -> i64 {
             let max_len = std::cmp::min(max_len, 10_000_000); // 10MB Host Memory Protection
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
             let ps = path_ptr as usize;
             let pe = ps + path_len as usize;
-            if pe > data.len() { return -1; }
+            if pe > data.len() {
+                return -1;
+            }
             let path_str = String::from_utf8_lossy(&data[ps..pe]).to_string();
 
             let root_volumes = resolve_synapse_root().join("sandbox_volumes");
@@ -705,15 +894,18 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 if !canon_target.starts_with(&base_path) {
                     return -1; // Block Path Traversal
                 }
-            } else { return -1; }
-            
+            } else {
+                return -1;
+            }
+
             match std::fs::read(&target_path) {
                 Ok(file_data) => {
                     let bytes_to_copy = std::cmp::min(file_data.len(), max_len as usize);
                     let out = out_ptr as usize;
                     let data_mut = mem.data_mut(&mut caller);
                     if out + bytes_to_copy <= data_mut.len() {
-                        data_mut[out..out + bytes_to_copy].copy_from_slice(&file_data[..bytes_to_copy]);
+                        data_mut[out..out + bytes_to_copy]
+                            .copy_from_slice(&file_data[..bytes_to_copy]);
                         bytes_to_copy as i64
                     } else {
                         -1
@@ -721,7 +913,7 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 }
                 Err(_) => -1,
             }
-        }
+        },
     )?;
 
     // --- host_mcp_call(server_ptr, server_len, payload_ptr, payload_len, out_ptr, max_len) -> bytes_written or -1 ---
@@ -730,7 +922,7 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             let max_len = std::cmp::min(max_len, 10_000_000); // 10MB Host Memory Protection
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
-            
+
             let ss = s_ptr as usize;
             let se = ss + s_len as usize;
             if se > data.len() { return -1; }
@@ -742,7 +934,7 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             let _payload = String::from_utf8_lossy(&data[ps..pe]).to_string();
 
             // MCP Router Scaffold
-            // A production environment will parse the JSON-RPC payload 
+            // A production environment will parse the JSON-RPC payload
             // and route it to the active stdio/sse MCP server via the GatewayState.
             let simulated_resp = format!("{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{\"server\":\"{}\", \"status\":\"mcp_scaffold_active\"}}}}", server_name);
             let resp_bytes = simulated_resp.as_bytes();
@@ -750,7 +942,7 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             let bytes_to_copy = std::cmp::min(resp_bytes.len(), max_len as usize);
             let out = out_ptr as usize;
             let data_mut = mem.data_mut(&mut caller);
-            
+
             if out + bytes_to_copy <= data_mut.len() {
                 data_mut[out..out + bytes_to_copy].copy_from_slice(&resp_bytes[..bytes_to_copy]);
                 bytes_to_copy as i64
@@ -762,18 +954,24 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
 
     // --- host_pause(state_id_ptr, state_id_len) -> result (0 success, -1 err) ---
     // Triggers an instantaneous zero-copy snapshot of the Wasm linear memory.
-    linker.func_wrap("env", "host_pause",
+    linker.func_wrap(
+        "env",
+        "host_pause",
         |mut caller: Caller<'_, GatewayState>, id_ptr: i64, id_len: i64| -> i64 {
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
-            
+
             let ids = id_ptr as usize;
             let ide = ids + id_len as usize;
-            if ide > data.len() { return -1; }
+            if ide > data.len() {
+                return -1;
+            }
             let state_id = String::from_utf8_lossy(&data[ids..ide]).to_string();
 
             // Zero-copy state dump (instantaneous freeze)
-            let snapshot_path = resolve_synapse_root().join("sandbox_snapshots").join(format!("{}.synsnap", state_id));
+            let snapshot_path = resolve_synapse_root()
+                .join("sandbox_snapshots")
+                .join(format!("{}.synsnap", state_id));
             if let Some(parent) = snapshot_path.parent() {
                 std::fs::create_dir_all(parent).unwrap_or_default();
             }
@@ -782,17 +980,21 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 Ok(_) => 0,
                 Err(_) => -1,
             }
-        }
+        },
     )?;
 
     // --- compile_and_exec(code_ptr, code_len) -> result (i32) ---
-    linker.func_wrap("env", "compile_and_exec",
+    linker.func_wrap(
+        "env",
+        "compile_and_exec",
         |mut caller: Caller<'_, GatewayState>, code_ptr: i64, code_len: i64| -> i64 {
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
             let start = code_ptr as usize;
             let end = start + code_len as usize;
-            if end > data.len() { return -1; }
+            if end > data.len() {
+                return -1;
+            }
             let source = String::from_utf8_lossy(&data[start..end]).to_string();
 
             let compile_script = format!(
@@ -849,7 +1051,9 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 eprintln!("[compile_and_exec] child linker trap setup error: {}", e);
                 return -1;
             }
-            if let Err(e) = child_linker.func_wrap("env", "print",
+            if let Err(e) = child_linker.func_wrap(
+                "env",
+                "print",
                 |mut caller: Caller<'_, ChildState>, ptr: i32, len: i32| {
                     let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
                     let data = mem.data(&caller);
@@ -859,14 +1063,18 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                         let chunk = data[start..end].to_vec();
                         caller.data_mut().stdout_buf.extend_from_slice(&chunk);
                     }
-                }) {
+                },
+            ) {
                 eprintln!("[compile_and_exec] child print FFI error: {}", e);
                 return -1;
             }
 
-            let mut store = Store::new(child_engine, ChildState {
-                stdout_buf: Vec::new(),
-            });
+            let mut store = Store::new(
+                child_engine,
+                ChildState {
+                    stdout_buf: Vec::new(),
+                },
+            );
             store.set_fuel(10_000_000).ok();
 
             let instance = match child_linker.instantiate(&mut store, &module) {
@@ -910,20 +1118,24 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                     -1
                 }
             }
-        }
+        },
     )?;
 
     // --- transpile_python(code_ptr, code_len) -> syn_len ---
     // Calls the Python SDK transpiler to convert Python source to .syn text.
     // Writes the .syn output to Wasm memory at offset 65536.
     // Stores ptr at memory[56..64] and len at memory[64..72].
-    linker.func_wrap("env", "transpile_python",
+    linker.func_wrap(
+        "env",
+        "transpile_python",
         |mut caller: Caller<'_, GatewayState>, code_ptr: i64, code_len: i64| -> i64 {
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
             let start = code_ptr as usize;
             let end = start + code_len as usize;
-            if end > data.len() { return -1; }
+            if end > data.len() {
+                return -1;
+            }
             let python_source = String::from_utf8_lossy(&data[start..end]).to_string();
 
             // Call the Python SDK transpiler
@@ -956,7 +1168,9 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
 
             let syn_code = output.stdout;
             let syn_len = syn_code.len();
-            if syn_len == 0 { return -1; }
+            if syn_len == 0 {
+                return -1;
+            }
 
             // Write .syn code to Wasm memory at offset 65536
             let syn_pos: usize = 65536;
@@ -975,7 +1189,7 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             }
 
             syn_len as i64
-        }
+        },
     )?;
 
     // --- Native Z3 Verification FFI ---
@@ -989,24 +1203,32 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
     // proofs belong to the research swarm, not the commercial Cell product.
     // Always returns 2 ("unknown") — guest code should treat as a non-fatal
     // verification miss and fall back to runtime sandbox enforcement.
-    linker.func_wrap("env", "z3_verify_expr",
+    linker.func_wrap(
+        "env",
+        "z3_verify_expr",
         |_caller: Caller<'_, GatewayState>, _expr_ptr: i64, _expr_len: i64| -> i64 {
             2 // Z3 PURGE stub — verification unknown without research solver
-        }
+        },
     )?;
 
     // --- z3_verify() STUB TO PREVENT CRASH ---
-    linker.func_wrap("env", "z3_verify",
-        |_caller: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64, _d: i64| -> i64 {
-            0
-        }
+    linker.func_wrap(
+        "env",
+        "z3_verify",
+        |_caller: Caller<'_, GatewayState>, _a: i64, _b: i64, _c: i64, _d: i64| -> i64 { 0 },
     )?;
 
     // --- z3_verify_property(property_id, source_ptr, source_len) -> 0=fail, 1=pass, 2=unknown ---
     // Semantic property verification for @inv pure, @inv terminates, @inv no_oob.
     // property_id: 1=pure, 2=terminates, 3=no_oob
-    linker.func_wrap("env", "z3_verify_property",
-        |mut caller: Caller<'_, GatewayState>, property_id: i64, source_ptr: i64, source_len: i64| -> i64 {
+    linker.func_wrap(
+        "env",
+        "z3_verify_property",
+        |mut caller: Caller<'_, GatewayState>,
+         property_id: i64,
+         source_ptr: i64,
+         source_len: i64|
+         -> i64 {
             // Z3 PURGE 2026-04-15: per-request Z3 budget removed (no Z3 deps in commercial Cell).
             // Cases 1, 2, 4 below are pure structural pattern matching — they still work.
             // Case 3 (@inv no_oob bounds verification) is stubbed because it required Z3.
@@ -1014,7 +1236,9 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             let data = mem.data(&caller);
             let start = source_ptr as usize;
             let end = start + source_len as usize;
-            if end > data.len() { return 2; }
+            if end > data.len() {
+                return 2;
+            }
             let source = match std::str::from_utf8(&data[start..end]) {
                 Ok(s) => s.to_string(),
                 Err(_) => return 2,
@@ -1034,18 +1258,22 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                     } else {
                         source.find("@f ")
                     };
-                    if func_start.is_none() { return 2; }
+                    if func_start.is_none() {
+                        return 2;
+                    }
                     let body = &source[func_start.unwrap()..];
 
                     // Skip "@f N name" prefix — find the function name end
                     // The function body starts after the name (could be on same line)
-                    let name_end = body.find([' ', '\n', '['])
-                        .and_then(|p| body[p+1..].find([' ', '\n', '[']).map(|q| p + 1 + q))
+                    let name_end = body
+                        .find([' ', '\n', '['])
+                        .and_then(|p| body[p + 1..].find([' ', '\n', '[']).map(|q| p + 1 + q))
                         .unwrap_or(0);
                     let func_body = &body[name_end..];
 
                     // Find end of this function (next @f or @inv or EOF)
-                    let func_end = func_body.find("\n@f ")
+                    let func_end = func_body
+                        .find("\n@f ")
                         .or_else(|| func_body.find("\n@inv "))
                         .unwrap_or(func_body.len());
                     let func_body = &func_body[..func_end];
@@ -1067,7 +1295,9 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 // Pattern: while < $i N [...let $i + $i 1...]
                 2 => {
                     let func_start = source.find("@f ");
-                    if func_start.is_none() { return 2; }
+                    if func_start.is_none() {
+                        return 2;
+                    }
                     let body = &source[func_start.unwrap()..];
 
                     // Check if there are any while loops
@@ -1091,16 +1321,21 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                             // Check if it's a "while $VAR" (flag-based termination)
                             if rest.starts_with("$") {
                                 // Flag-based loops — check if the flag is updated/cleared somewhere in the body
-                                let flag_var: String = rest.chars().take_while(|c| !c.is_whitespace() && *c != '[').collect();
+                                let flag_var: String = rest
+                                    .chars()
+                                    .take_while(|c| !c.is_whitespace() && *c != '[')
+                                    .collect();
                                 let body_start = rest.find('[');
                                 let body_end = rest.find(']');
-                                
+
                                 if let (Some(s), Some(e)) = (body_start, body_end) {
                                     let loop_body = &rest[s..e];
                                     let update_set = format!("set {}", flag_var);
                                     let update_let = format!("let {}", flag_var);
-                                    
-                                    if !loop_body.contains(&update_set) && !loop_body.contains(&update_let) {
+
+                                    if !loop_body.contains(&update_set)
+                                        && !loop_body.contains(&update_let)
+                                    {
                                         return 0; // Unbounded flag loop detected
                                     }
                                 } else {
@@ -1131,7 +1366,9 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 // safety mechanism. Re-introduce Z3 to restore static proofs.
                 3 => {
                     let func_start = source.find("@f ");
-                    if func_start.is_none() { return 2; }
+                    if func_start.is_none() {
+                        return 2;
+                    }
                     let body = &source[func_start.unwrap()..];
 
                     let has_read = body.contains("read ") || body.contains("read8 ");
@@ -1155,24 +1392,30 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 // Structural pattern matching (no Z3), consistent with @inv pure/@inv terminates.
                 4 => {
                     let func_start = source.find("@f ");
-                    if func_start.is_none() { return 2; }
+                    if func_start.is_none() {
+                        return 2;
+                    }
                     let body = &source[func_start.unwrap()..];
 
                     // Required components
                     let has_ad_begin = body.contains("ad_begin");
-                    let has_loss = body.contains("ad_mse_loss") || body.contains("ad_cross_entropy_loss");
+                    let has_loss =
+                        body.contains("ad_mse_loss") || body.contains("ad_cross_entropy_loss");
                     let has_backward = body.contains("ad_backward");
-                    let has_optimizer = body.contains("ad_sgd_step") || body.contains("ad_adamw_step");
+                    let has_optimizer =
+                        body.contains("ad_sgd_step") || body.contains("ad_adamw_step");
 
                     if !has_ad_begin || !has_loss || !has_backward || !has_optimizer {
                         return 0; // Missing required training component
                     }
 
                     // Order check: loss before backward before optimizer
-                    let loss_pos = body.find("ad_mse_loss")
+                    let loss_pos = body
+                        .find("ad_mse_loss")
                         .or_else(|| body.find("ad_cross_entropy_loss"));
                     let backward_pos = body.find("ad_backward");
-                    let optimizer_pos = body.find("ad_sgd_step")
+                    let optimizer_pos = body
+                        .find("ad_sgd_step")
                         .or_else(|| body.find("ad_adamw_step"));
 
                     let ordered = match (loss_pos, backward_pos, optimizer_pos) {
@@ -1195,22 +1438,27 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                     while let Some(while_pos) = body[search_from..].find("while ") {
                         let abs_pos = search_from + while_pos;
                         let rest = &body[abs_pos + 6..];
-                        let has_bound = rest.starts_with("< $") ||
-                                       rest.starts_with("<= $") ||
-                                       rest.starts_with("& ") ||
-                                       rest.starts_with("!= ");
+                        let has_bound = rest.starts_with("< $")
+                            || rest.starts_with("<= $")
+                            || rest.starts_with("& ")
+                            || rest.starts_with("!= ");
                         if !has_bound {
                             if rest.starts_with("$") {
-                                let flag_var: String = rest.chars().take_while(|c| !c.is_whitespace() && *c != '[').collect();
+                                let flag_var: String = rest
+                                    .chars()
+                                    .take_while(|c| !c.is_whitespace() && *c != '[')
+                                    .collect();
                                 let body_start = rest.find('[');
                                 let body_end = rest.find(']');
-                                
+
                                 if let (Some(s), Some(e)) = (body_start, body_end) {
                                     let loop_body = &rest[s..e];
                                     let update_set = format!("set {}", flag_var);
                                     let update_let = format!("let {}", flag_var);
-                                    
-                                    if !loop_body.contains(&update_set) && !loop_body.contains(&update_let) {
+
+                                    if !loop_body.contains(&update_set)
+                                        && !loop_body.contains(&update_let)
+                                    {
                                         return 0; // Unbounded training flag loop detected
                                     }
                                 } else {
@@ -1232,7 +1480,9 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 // Verifies: has forward pass, no backward, no optimizer.
                 5 => {
                     let func_start = source.find("@f ");
-                    if func_start.is_none() { return 2; }
+                    if func_start.is_none() {
+                        return 2;
+                    }
                     let body = &source[func_start.unwrap()..];
 
                     // Must have forward pass (weight loading or matmul)
@@ -1246,8 +1496,8 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
 
                     // Must NOT have training operations
                     let has_backward = body.contains("ad_backward");
-                    let has_optimizer = body.contains("ad_sgd_step")
-                        || body.contains("ad_adamw_step");
+                    let has_optimizer =
+                        body.contains("ad_sgd_step") || body.contains("ad_adamw_step");
 
                     if has_backward || has_optimizer {
                         return 0; // Training ops found in inference program
@@ -1260,7 +1510,9 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 // Verifies: no float ops or tensor ops.
                 6 => {
                     let func_start = source.find("@f ");
-                    if func_start.is_none() { return 2; }
+                    if func_start.is_none() {
+                        return 2;
+                    }
                     let body = &source[func_start.unwrap()..];
 
                     let has_float_add = body.contains("f32.add") || body.contains("f64.add");
@@ -1277,18 +1529,23 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
 
                 _ => 2, // Unknown property
             }
-        }
+        },
     )?;
 
     // --- spawn_wasm(ptr, len) -> result (i64) ---
-    linker.func_wrap("env", "spawn_wasm",
+    linker.func_wrap(
+        "env",
+        "spawn_wasm",
         |mut caller: Caller<'_, GatewayState>, wasm_ptr: i64, wasm_len: i64| -> i64 {
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
             let start = wasm_ptr as usize;
             let end = start + wasm_len as usize;
             if end > data.len() {
-                write_gateway_payload(&mut caller, br#"{"status":"error","error":"invalid_wasm_input"}"#);
+                write_gateway_payload(
+                    &mut caller,
+                    br#"{"status":"error","error":"invalid_wasm_input"}"#,
+                );
                 return -1;
             }
             let wasm_bytes = data[start..end].to_vec();
@@ -1307,7 +1564,10 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                     }
                     Err(e) => {
                         eprintln!("[spawn_wasm] wasm compile error: {}", e);
-                        write_gateway_payload(&mut caller, br#"{"status":"error","error":"compile_failed"}"#);
+                        write_gateway_payload(
+                            &mut caller,
+                            br#"{"status":"error","error":"compile_failed"}"#,
+                        );
                         return -1;
                     }
                 }
@@ -1317,10 +1577,15 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             child_linker.allow_shadowing(true);
             if let Err(e) = child_linker.define_unknown_imports_as_traps(&module) {
                 eprintln!("[spawn_wasm] child linker error: {}", e);
-                write_gateway_payload(&mut caller, br#"{"status":"error","error":"runtime_setup_failed"}"#);
+                write_gateway_payload(
+                    &mut caller,
+                    br#"{"status":"error","error":"runtime_setup_failed"}"#,
+                );
                 return -1;
             }
-            if let Err(e) = child_linker.func_wrap("env", "print",
+            if let Err(e) = child_linker.func_wrap(
+                "env",
+                "print",
                 |mut caller: Caller<'_, ChildState>, ptr: i32, len: i32| {
                     let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
                     let data = mem.data(&caller);
@@ -1330,22 +1595,32 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                         let chunk = data[start..end].to_vec();
                         caller.data_mut().stdout_buf.extend_from_slice(&chunk);
                     }
-                }) {
+                },
+            ) {
                 eprintln!("[spawn_wasm] child print FFI error: {}", e);
-                write_gateway_payload(&mut caller, br#"{"status":"error","error":"runtime_setup_failed"}"#);
+                write_gateway_payload(
+                    &mut caller,
+                    br#"{"status":"error","error":"runtime_setup_failed"}"#,
+                );
                 return -1;
             }
 
-            let mut store = Store::new(&child_engine, ChildState {
-                stdout_buf: Vec::new(),
-            });
+            let mut store = Store::new(
+                &child_engine,
+                ChildState {
+                    stdout_buf: Vec::new(),
+                },
+            );
             store.set_fuel(10_000_000).ok();
 
             let instance = match child_linker.instantiate(&mut store, &module) {
                 Ok(i) => i,
                 Err(e) => {
                     eprintln!("[spawn_wasm] instantiate error: {}", e);
-                    write_gateway_payload(&mut caller, br#"{"status":"error","error":"runtime_failed"}"#);
+                    write_gateway_payload(
+                        &mut caller,
+                        br#"{"status":"error","error":"runtime_failed"}"#,
+                    );
                     return -1;
                 }
             };
@@ -1353,7 +1628,10 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
             let main_fn = match instance.get_typed_func::<(), i64>(&mut store, "main") {
                 Ok(f) => f,
                 Err(_) => {
-                    write_gateway_payload(&mut caller, br#"{"status":"error","error":"runtime_failed"}"#);
+                    write_gateway_payload(
+                        &mut caller,
+                        br#"{"status":"error","error":"runtime_failed"}"#,
+                    );
                     return -1;
                 }
             };
@@ -1383,21 +1661,33 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 }
                 Err(e) => {
                     eprintln!("[spawn_wasm] exec error: {:#?}", e);
-                    write_gateway_payload(&mut caller, br#"{"status":"error","error":"runtime_failed"}"#);
+                    write_gateway_payload(
+                        &mut caller,
+                        br#"{"status":"error","error":"runtime_failed"}"#,
+                    );
                     -1
                 }
             }
-        }
+        },
     )?;
 
     // --- kv_get(key_ptr, key_len, val_out_ptr, val_max_len) -> val_len ---
-    linker.func_wrap("env", "kv_get",
-        |mut caller: Caller<'_, GatewayState>, key_ptr: i64, key_len: i64, val_ptr: i64, val_max: i64| -> i64 {
+    linker.func_wrap(
+        "env",
+        "kv_get",
+        |mut caller: Caller<'_, GatewayState>,
+         key_ptr: i64,
+         key_len: i64,
+         val_ptr: i64,
+         val_max: i64|
+         -> i64 {
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
             let ks = key_ptr as usize;
             let ke = ks + key_len as usize;
-            if ke > data.len() { return -1; }
+            if ke > data.len() {
+                return -1;
+            }
             let key = String::from_utf8_lossy(&data[ks..ke]).to_string();
 
             let db_path = format!("{}/default.db", caller.data().db_path);
@@ -1409,9 +1699,10 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)",
                 [],
             );
-            let result: Result<String, _> = conn.query_row(
-                "SELECT value FROM kv WHERE key = ?1", [&key], |row| row.get(0)
-            );
+            let result: Result<String, _> =
+                conn.query_row("SELECT value FROM kv WHERE key = ?1", [&key], |row| {
+                    row.get(0)
+                });
             match result {
                 Ok(val) => {
                     let vb = val.as_bytes();
@@ -1423,19 +1714,28 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 }
                 Err(_) => 0,
             }
-        }
+        },
     )?;
 
     // --- kv_set(key_ptr, key_len, val_ptr, val_len) -> 0 on success ---
-    linker.func_wrap("env", "kv_set",
-        |mut caller: Caller<'_, GatewayState>, key_ptr: i64, key_len: i64, val_ptr: i64, val_len: i64| -> i64 {
+    linker.func_wrap(
+        "env",
+        "kv_set",
+        |mut caller: Caller<'_, GatewayState>,
+         key_ptr: i64,
+         key_len: i64,
+         val_ptr: i64,
+         val_len: i64|
+         -> i64 {
             let mem = caller.get_export("memory").unwrap().into_memory().unwrap();
             let data = mem.data(&caller);
             let ks = key_ptr as usize;
             let ke = ks + key_len as usize;
             let vs = val_ptr as usize;
             let ve = vs + val_len as usize;
-            if ke > data.len() || ve > data.len() { return -1; }
+            if ke > data.len() || ve > data.len() {
+                return -1;
+            }
             let key = String::from_utf8_lossy(&data[ks..ke]).to_string();
             let val = String::from_utf8_lossy(&data[vs..ve]).to_string();
 
@@ -1455,7 +1755,7 @@ fn register_ffi(linker: &mut Linker<GatewayState>) -> Result<(), Box<dyn std::er
                 Ok(_) => 0,
                 Err(_) => -1,
             }
-        }
+        },
     )?;
 
     Ok(())
@@ -1479,42 +1779,54 @@ fn run_worker(
     register_ffi(&mut linker).expect("FFI registration");
 
     // Create store with the pre-bound listener already injected
-    let mut store = Store::new(engine, GatewayState {
-        listeners: vec![listener],
-        connections: Vec::new(),
-        stdout_buf: Vec::new(),
-        epoch: Instant::now(),
-        child_engine,
-        api_key: api_key.to_vec(),
-        db_path: db_path.to_string(),
-        active_conn: None,
-        rate_limits: HashMap::new(),
-        rate_limit_max,
-        conn_ips: Vec::new(),
-        module_cache,
-        p2p_streams: Vec::new(),
-    });
+    let mut store = Store::new(
+        engine,
+        GatewayState {
+            listeners: vec![listener],
+            connections: Vec::new(),
+            stdout_buf: Vec::new(),
+            epoch: Instant::now(),
+            child_engine,
+            api_key: api_key.to_vec(),
+            db_path: db_path.to_string(),
+            active_conn: None,
+            rate_limits: HashMap::new(),
+            rate_limit_max,
+            conn_ips: Vec::new(),
+            module_cache,
+            p2p_streams: Vec::new(),
+        },
+    );
 
     eprintln!("[synapse-gateway] Thread {} started", thread_id);
 
     // Trap recovery loop
     loop {
-        let instance = linker.instantiate(&mut store, module)
-            .expect("instantiate");
-        let main_fn = instance.get_typed_func::<(), i64>(&mut store, "main")
+        let instance = linker.instantiate(&mut store, module).expect("instantiate");
+        let main_fn = instance
+            .get_typed_func::<(), i64>(&mut store, "main")
             .expect("main fn");
 
         match main_fn.call(&mut store, ()) {
             Ok(_) => {
-                eprintln!("[synapse-gateway] Thread {} main() returned normally", thread_id);
+                eprintln!(
+                    "[synapse-gateway] Thread {} main() returned normally",
+                    thread_id
+                );
                 break;
             }
             Err(e) => {
-                eprintln!("[synapse-gateway] Thread {} TRAP (recovering): {:#}", thread_id, e);
+                eprintln!(
+                    "[synapse-gateway] Thread {} TRAP (recovering): {:#}",
+                    thread_id, e
+                );
                 // Send HTTP 500 to the client that caused the trap
                 if let Some(conn_idx) = store.data().active_conn {
-                    if let Some(Some(ref mut stream)) = store.data_mut().connections.get_mut(conn_idx) {
-                        let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(50)));
+                    if let Some(Some(ref mut stream)) =
+                        store.data_mut().connections.get_mut(conn_idx)
+                    {
+                        let _ =
+                            stream.set_write_timeout(Some(std::time::Duration::from_millis(50)));
                         let _ = stream.write_all(
                             b"HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 42\r\n\r\n{\"status\":\"error\",\"error\":\"compile_trap\"}"
                         );
@@ -1538,7 +1850,8 @@ fn run_worker(
 static EMBEDDED_GATEWAY_WASM: &[u8] = include_bytes!("../gateway.wasm");
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let wasm_override = std::env::args().nth(1)
+    let wasm_override = std::env::args()
+        .nth(1)
         .or_else(|| std::env::var("SYNAPSE_GATEWAY_WASM").ok());
     let api_key = std::env::var("SYNAPSE_API_KEY").unwrap_or_else(|_| {
         eprintln!("[synapse-gateway] Error: SYNAPSE_API_KEY environment variable is required");
@@ -1546,20 +1859,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     });
     let db_path = std::env::var("SYNAPSE_DB_PATH").unwrap_or_else(|_| "data/state".into());
-    let listen_port: u16 = std::env::var("SYNAPSE_PORT").ok()
-        .and_then(|p| p.parse().ok()).unwrap_or(8000);
-    let rate_limit_max: u64 = std::env::var("SYNAPSE_RATE_LIMIT").ok()
-        .and_then(|r| r.parse().ok()).unwrap_or(200);
+    let listen_port: u16 = std::env::var("SYNAPSE_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8000);
+    let rate_limit_max: u64 = std::env::var("SYNAPSE_RATE_LIMIT")
+        .ok()
+        .and_then(|r| r.parse().ok())
+        .unwrap_or(200);
 
     // Load gateway.wasm: embedded by default, override with file path
     let wasm_bytes: Vec<u8> = if let Some(ref path) = wasm_override {
         eprintln!("[synapse-gateway] Loading gateway from file: {}", path);
         std::fs::read(path)?
     } else {
-        eprintln!("[synapse-gateway] Using embedded gateway.wasm ({} bytes)", EMBEDDED_GATEWAY_WASM.len());
+        eprintln!(
+            "[synapse-gateway] Using embedded gateway.wasm ({} bytes)",
+            EMBEDDED_GATEWAY_WASM.len()
+        );
         EMBEDDED_GATEWAY_WASM.to_vec()
     };
-    eprintln!("[synapse-gateway] API key: {}...", &api_key[..std::cmp::min(12, api_key.len())]);
+    eprintln!(
+        "[synapse-gateway] API key: {}...",
+        &api_key[..std::cmp::min(12, api_key.len())]
+    );
 
     // Engine with optimizations
     let mut config = Config::new();
@@ -1588,7 +1911,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     child_config.consume_fuel(true);
     let child_engine = Arc::new(Engine::new(&child_config)?);
 
-    eprintln!("[synapse-gateway] Self-hosting .syn gateway running on port {}", listen_port);
+    eprintln!(
+        "[synapse-gateway] Self-hosting .syn gateway running on port {}",
+        listen_port
+    );
     eprintln!("[synapse-gateway] Thread-per-core: {} threads", num_threads);
     eprintln!("[synapse-gateway] Module cache: 10,000 entries (shared across threads)");
     eprintln!("[synapse-gateway] Written in .syn, compiled to Wasm, executed on wasmtime");
@@ -1597,26 +1923,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut handles = Vec::new();
 
     // ─── .cell API ──────────────────────────────────────────────
-    let cell_port: u16 = std::env::var("CELL_PORT").ok()
-        .and_then(|p| p.parse().ok()).unwrap_or(8002);
-    let cell_api_key = Arc::new(std::env::var("CELL_API_KEY")
-        .unwrap_or_else(|_| String::new()));
+    let cell_port: u16 = std::env::var("CELL_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8002);
+    let cell_api_key = Arc::new(std::env::var("CELL_API_KEY").unwrap_or_else(|_| String::new()));
     if cell_api_key.is_empty() {
         eprintln!("[.cell] ⚠ No CELL_API_KEY set — API is UNAUTHENTICATED");
     } else {
         eprintln!("[.cell] ✓ API key authentication enabled");
     }
-    let cells_root = std::env::var("CELL_DATA_DIR")
-        .unwrap_or_else(|_| "/tmp/synapse-cells".into());
+    let cells_root = std::env::var("CELL_DATA_DIR").unwrap_or_else(|_| "/tmp/synapse-cells".into());
     let template_dir = std::env::var("CELL_TEMPLATE_DIR")
         .unwrap_or_else(|_| format!("{}/templates", resolve_synapse_root().display()));
-        
+
     let cert_env = std::env::var("SYNAPSE_LICENSE_CERT").ok();
     let license_status = license::validate_license(cert_env);
-    
+
     match &license_status {
         license::LicenseStatus::Valid(info) => {
-            eprintln!("[synapse-gateway] 🔑 License Valid: {} ({}) - Expires: {}", info.company_name, info.tier, info.expires_at);
+            eprintln!(
+                "[synapse-gateway] 🔑 License Valid: {} ({}) - Expires: {}",
+                info.company_name, info.tier, info.expires_at
+            );
         }
         license::LicenseStatus::EdgeCell => {
             eprintln!("[synapse-gateway] ⚠ No Commercial License Found. Operating in EdgeCell (Free) mode.");
@@ -1626,7 +1955,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("[synapse-gateway] ❌ License Expired: {} ({}) - Expired at: {}. Operating in EdgeCell mode.", info.company_name, info.tier, info.expires_at);
         }
         license::LicenseStatus::Invalid(err) => {
-            eprintln!("[synapse-gateway] ❌ Invalid License: {}. Operating in EdgeCell mode.", err);
+            eprintln!(
+                "[synapse-gateway] ❌ Invalid License: {}. Operating in EdgeCell mode.",
+                err
+            );
         }
     }
 
@@ -1640,11 +1972,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("[.cell] Failed to initialize CellManager: {}", e);
             eprintln!("[.cell] Cell API will not be available");
             // Continue without cell API — gateway still works
-            Arc::new(cell::CellManager::new(
-                std::path::PathBuf::from("/tmp/synapse-cells-fallback"),
-                std::path::PathBuf::from(&template_dir),
-                license_status,
-            ).unwrap())
+            Arc::new(
+                cell::CellManager::new(
+                    std::path::PathBuf::from("/tmp/synapse-cells-fallback"),
+                    std::path::PathBuf::from(&template_dir),
+                    license_status,
+                )
+                .unwrap(),
+            )
         }
     };
 
@@ -1659,7 +1994,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => eprintln!("[.cell] Failed to load {}: {}", filename, e),
             }
         } else {
-            eprintln!("[.cell] Template not found: {} (will be available after compilation)", path.display());
+            eprintln!(
+                "[.cell] Template not found: {} (will be available after compilation)",
+                path.display()
+            );
         }
     }
 
@@ -1685,9 +2023,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     // Also load from cell/templates/ directory for template specs
     {
-        let cell_templates_dir = std::path::Path::new(&template_dir).parent()
+        let cell_templates_dir = std::path::Path::new(&template_dir)
+            .parent()
             .unwrap_or(std::path::Path::new(&template_dir))
-            .join("cell").join("templates");
+            .join("cell")
+            .join("templates");
         if cell_templates_dir.exists() {
             if let Ok(entries) = std::fs::read_dir(&cell_templates_dir) {
                 for entry in entries.flatten() {
@@ -1695,7 +2035,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if path.extension().map(|e| e == "json").unwrap_or(false) {
                         if let Ok(data) = std::fs::read_to_string(&path) {
                             if let Ok(info) = serde_json::from_str::<cell::TemplateInfo>(&data) {
-                                if !["python3", "javascript", "synapse"].contains(&info.name.as_str()) {
+                                if !["python3", "javascript", "synapse"]
+                                    .contains(&info.name.as_str())
+                                {
                                     let name = info.name.clone();
                                     let _ = cell_manager.register_custom_template(info, None);
                                     eprintln!("[.cell] Loaded template spec: {}", name);
@@ -1742,7 +2084,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let path = preview_dir.join(filename);
             match std::fs::read_to_string(&path) {
                 Ok(html) => {
-                    eprintln!("[.cell] ✓ Static page {} → {} ({} bytes)", route, filename, html.len());
+                    eprintln!(
+                        "[.cell] ✓ Static page {} → {} ({} bytes)",
+                        route,
+                        filename,
+                        html.len()
+                    );
                     pages.insert(route.to_string(), html);
                 }
                 Err(_) => {
@@ -1761,24 +2108,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let cm = Arc::clone(&cell_manager);
             let key = Arc::clone(&cell_api_key);
             let pages = Arc::clone(&static_pages);
-            handles.push(std::thread::Builder::new()
-                .name(format!("cell-api-{}", cell_thread_id))
-                .spawn(move || {
-                    cell_api::run_cell_api(listener_clone, cm, cell_thread_id, key, pages);
-                })?);
+            handles.push(
+                std::thread::Builder::new()
+                    .name(format!("cell-api-{}", cell_thread_id))
+                    .spawn(move || {
+                        cell_api::run_cell_api(listener_clone, cm, cell_thread_id, key, pages);
+                    })?,
+            );
         }
     }
 
     // Spawn WebSocket Terminals (Task 8) on port 8003
     let ws_port = std::env::var("SYNAPSE_WS_PORT").unwrap_or_else(|_| "8003".to_string());
     if let Ok(ws_listener) = std::net::TcpListener::bind(format!("0.0.0.0:{}", ws_port)) {
-        eprintln!("[.cell] WebSocket Terminal Proxy listening on port {}", ws_port);
+        eprintln!(
+            "[.cell] WebSocket Terminal Proxy listening on port {}",
+            ws_port
+        );
         let cm_ws = Arc::clone(&cell_manager);
-        handles.push(std::thread::Builder::new()
-            .name("cell-ws-api".into())
-            .spawn(move || {
-                ws_api::run_ws_api(ws_listener, cm_ws);
-            })?);
+        handles.push(
+            std::thread::Builder::new()
+                .name("cell-ws-api".into())
+                .spawn(move || {
+                    ws_api::run_ws_api(ws_listener, cm_ws);
+                })?,
+        );
     } else {
         eprintln!("[.cell] Failed to bind WebSocket Terminal on port 8003.");
     }
@@ -1799,16 +2153,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let cache = module_cache.clone();
         let child_eng = Arc::clone(&child_engine);
 
-        handles.push(std::thread::Builder::new()
-            .name(format!("synapse-worker-{}", thread_id))
-            .spawn(move || {
-                run_worker(thread_id, listener_clone, &engine, &module, &api_key_bytes, &db_path, rate_limit_max, cache, child_eng);
-            })?);
+        handles.push(
+            std::thread::Builder::new()
+                .name(format!("synapse-worker-{}", thread_id))
+                .spawn(move || {
+                    run_worker(
+                        thread_id,
+                        listener_clone,
+                        &engine,
+                        &module,
+                        &api_key_bytes,
+                        &db_path,
+                        rate_limit_max,
+                        cache,
+                        child_eng,
+                    );
+                })?,
+        );
     }
 
     // Main thread runs worker 0
     let listener_clone = main_listener.try_clone()?;
-    run_worker(0, listener_clone, &engine, &module, &api_key_bytes, &db_path, rate_limit_max, module_cache, child_engine);
+    run_worker(
+        0,
+        listener_clone,
+        &engine,
+        &module,
+        &api_key_bytes,
+        &db_path,
+        rate_limit_max,
+        module_cache,
+        child_engine,
+    );
 
     // Wait for worker threads
     for handle in handles {

@@ -4,7 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 // Public Key matching the ones generated in license_generator.py
 pub const SYNAPSE_PUBLIC_KEY: [u8; 32] = [
-    85, 4, 65, 6, 13, 229, 76, 117, 254, 149, 60, 233, 89, 62, 130, 245, 215, 165, 104, 168, 196, 139, 176, 182, 146, 44, 238, 129, 158, 146, 180, 162
+    85, 4, 65, 6, 13, 229, 76, 117, 254, 149, 60, 233, 89, 62, 130, 245, 215, 165, 104, 168, 196,
+    139, 176, 182, 146, 44, 238, 129, 158, 146, 180, 162,
 ];
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -31,7 +32,11 @@ pub enum LicenseStatus {
 impl LicenseStatus {
     pub fn is_pro(&self) -> bool {
         match self {
-            LicenseStatus::Valid(info) if info.tier == "Pro" || info.tier == "Scale" || info.tier == "Enterprise" => true,
+            LicenseStatus::Valid(info)
+                if info.tier == "Pro" || info.tier == "Scale" || info.tier == "Enterprise" =>
+            {
+                true
+            }
             _ => false,
         }
     }
@@ -48,10 +53,11 @@ pub fn validate_license(cert_env: Option<String>) -> LicenseStatus {
         Err(_) => return LicenseStatus::Invalid("Malformed license JSON format".to_string()),
     };
 
-    let sig_bytes = match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &cert.signature) {
-        Ok(b) => b,
-        Err(_) => return LicenseStatus::Invalid("Invalid base64 signature".to_string()),
-    };
+    let sig_bytes =
+        match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &cert.signature) {
+            Ok(b) => b,
+            Err(_) => return LicenseStatus::Invalid("Invalid base64 signature".to_string()),
+        };
 
     let signature = match Signature::from_slice(&sig_bytes) {
         Ok(s) => s,
@@ -69,10 +75,11 @@ pub fn validate_license(cert_env: Option<String>) -> LicenseStatus {
     }
 
     // Decode Payload
-    let payload_bytes = match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &cert.payload) {
-        Ok(b) => b,
-        Err(_) => return LicenseStatus::Invalid("Invalid base64 payload".to_string()),
-    };
+    let payload_bytes =
+        match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &cert.payload) {
+            Ok(b) => b,
+            Err(_) => return LicenseStatus::Invalid("Invalid base64 payload".to_string()),
+        };
 
     let info: LicenseInfo = match serde_json::from_slice(&payload_bytes) {
         Ok(i) => i,

@@ -66,7 +66,11 @@ impl InferenceRequest {
     }
 
     pub fn canonical_prompt(&self) -> String {
-        if let Some(prompt) = self.prompt.as_ref().filter(|prompt| !prompt.trim().is_empty()) {
+        if let Some(prompt) = self
+            .prompt
+            .as_ref()
+            .filter(|prompt| !prompt.trim().is_empty())
+        {
             return prompt.clone();
         }
         self.messages
@@ -84,7 +88,8 @@ impl InferenceRequest {
         );
         payload.insert(
             "messages".to_string(),
-            serde_json::to_value(&self.messages).unwrap_or_else(|_| serde_json::Value::Array(vec![])),
+            serde_json::to_value(&self.messages)
+                .unwrap_or_else(|_| serde_json::Value::Array(vec![])),
         );
         // Disable streaming so the synchronous ureq response flow works
         // against the native QES Rust engine and compatible local wrappers.
@@ -97,7 +102,10 @@ impl InferenceRequest {
             payload.insert("temperature".to_string(), serde_json::json!(temperature));
         }
         if let Some(enable_thinking) = self.enable_thinking {
-            payload.insert("enable_thinking".to_string(), serde_json::json!(enable_thinking));
+            payload.insert(
+                "enable_thinking".to_string(),
+                serde_json::json!(enable_thinking),
+            );
         }
         serde_json::Value::Object(payload)
     }
@@ -188,15 +196,11 @@ pub fn infer_local(request: &InferenceRequest) -> Result<InferenceResponse, Stri
             let json: serde_json::Value = resp
                 .into_json()
                 .map_err(|err| format!("Local backend returned invalid JSON: {}", err))?;
-            let text = extract_completion_text(&json)
-                .ok_or_else(|| "Local backend response missing choices[0].message.content".to_string())?;
+            let text = extract_completion_text(&json).ok_or_else(|| {
+                "Local backend response missing choices[0].message.content".to_string()
+            })?;
             let latency_ms = started.elapsed().as_millis() as u64;
-            let receipt = ExecutionReceipt::new(
-                &prompt,
-                &text,
-                "",
-                &config.logical_model_alias,
-            );
+            let receipt = ExecutionReceipt::new(&prompt, &text, "", &config.logical_model_alias);
             Ok(InferenceResponse {
                 text,
                 model: config.logical_model_alias.clone(),
@@ -235,7 +239,11 @@ fn extract_completion_text(json: &serde_json::Value) -> Option<String> {
                     .filter_map(|part| part.get("text").and_then(|value| value.as_str()))
                     .collect::<Vec<_>>()
                     .join("");
-                if text.is_empty() { None } else { Some(text) }
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(text)
+                }
             }
             _ => None,
         })
@@ -245,7 +253,9 @@ fn extract_completion_text(json: &serde_json::Value) -> Option<String> {
 mod tests {
     use std::time::Duration;
 
-    use super::{extract_completion_text, InferenceConfig, InferenceRequest, DEFAULT_LOCAL_MODEL_ALIAS};
+    use super::{
+        extract_completion_text, InferenceConfig, InferenceRequest, DEFAULT_LOCAL_MODEL_ALIAS,
+    };
 
     #[test]
     fn canonical_prompt_prefers_explicit_prompt() {
@@ -263,8 +273,14 @@ mod tests {
         let request = InferenceRequest {
             prompt: None,
             messages: vec![
-                super::ChatMessage { role: "system".to_string(), content: "sys".to_string() },
-                super::ChatMessage { role: "user".to_string(), content: "ask".to_string() },
+                super::ChatMessage {
+                    role: "system".to_string(),
+                    content: "sys".to_string(),
+                },
+                super::ChatMessage {
+                    role: "user".to_string(),
+                    content: "ask".to_string(),
+                },
             ],
             ..InferenceRequest::default()
         };
