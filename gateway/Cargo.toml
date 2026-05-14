@@ -23,7 +23,7 @@ pyo3 = { version = "0.21.2", features = ["extension-module", "abi3-py38"], optio
 # says "Rust + wasmtime 43 on Linux"). Code in cell.rs already uses the v22+
 # API surface (p1, p2, WasiP1Ctx, DirPerms, FilePerms, add_to_linker_sync) —
 # the v18 pin was the source of the build errors documented in JC-001.
-wasmtime = "43"
+wasmtime = "44"
 wasmtime-wasi = "43"
 sha2 = "0.10.9"
 rusqlite = { version = "0.31", features = ["bundled"] }
