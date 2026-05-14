@@ -843,6 +843,76 @@ export class Cell {
     return resp.json() as Promise<T>;
   }
 
+  // ─── Lifecycle Events & Webhooks ───────────────────────────────
+
+  /** Get lifecycle events for this cell (create, pause, resume, kill, etc.). */
+  async getLifecycleEvents(): Promise<Record<string, unknown>[]> {
+    return this._request<Record<string, unknown>[]>('GET',
+      `/v1/cells/${this.cellId}/events`);
+  }
+
+  /**
+   * Get global lifecycle events across all cells (last 100).
+   * @param apiUrl - Gateway URL (default: http://localhost:8002).
+   */
+  static async getGlobalEvents(
+    apiUrl = 'http://localhost:8002',
+  ): Promise<Record<string, unknown>[]> {
+    const resp = await fetch(`${apiUrl}/v1/events`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json() as Promise<Record<string, unknown>[]>;
+  }
+
+  /**
+   * Register a webhook to receive lifecycle event notifications.
+   *
+   * @param url - HTTP endpoint to receive POST callbacks.
+   * @param events - Event types to subscribe to (default: ["*"] for all).
+   * @param apiUrl - Gateway URL.
+   * @returns Webhook registration with webhook_id, url, events, created_at.
+   */
+  static async registerWebhook(
+    url: string,
+    events: string[] = ['*'],
+    apiUrl = 'http://localhost:8002',
+  ): Promise<Record<string, unknown>> {
+    const resp = await fetch(`${apiUrl}/v1/webhooks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, events }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json() as Promise<Record<string, unknown>>;
+  }
+
+  /**
+   * List all registered webhooks.
+   * @param apiUrl - Gateway URL.
+   */
+  static async listWebhooks(
+    apiUrl = 'http://localhost:8002',
+  ): Promise<Record<string, unknown>[]> {
+    const resp = await fetch(`${apiUrl}/v1/webhooks`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json() as Promise<Record<string, unknown>[]>;
+  }
+
+  /**
+   * Delete a webhook by ID.
+   * @param webhookId - ID of the webhook to remove.
+   * @param apiUrl - Gateway URL.
+   */
+  static async deleteWebhook(
+    webhookId: string,
+    apiUrl = 'http://localhost:8002',
+  ): Promise<Record<string, unknown>> {
+    const resp = await fetch(`${apiUrl}/v1/webhooks/${webhookId}`, {
+      method: 'DELETE',
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json() as Promise<Record<string, unknown>>;
+  }
+
   toString(): string {
     const status = this.persistent ? 'persistent' : 'ephemeral';
     return `Cell(${this.cellId.slice(0, 8)}... ${status} ${this.template} execs=${this._executions})`;

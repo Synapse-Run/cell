@@ -1,0 +1,113 @@
+---
+title: Sandbox Lifecycle
+description: Create, connect, pause, resume, and kill sandboxes.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+## Creating a Sandbox
+
+<Tabs>
+  <TabItem label="Python">
+    ```python
+    from synapse import Cell
+
+    # Basic — ephemeral sandbox
+    cell = Cell()
+
+    # With options
+    cell = Cell(
+        template="python3",
+        persistent=True,
+        timeout_ms=3_600_000,  # 1 hour
+        metadata={"project": "my-agent"},
+        envs={"API_KEY": "sk_..."},
+    )
+
+    # Factory method (async context)
+    cell = Cell.create(template="python3")
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```typescript
+    import { Cell } from '@runsynapse/sdk';
+
+    const cell = await Cell.create({
+      template: 'python3',
+      persistent: true,
+      timeoutMs: 3_600_000,
+      metadata: { project: 'my-agent' },
+      envs: { API_KEY: 'sk_...' },
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## Connecting to an Existing Sandbox
+
+<Tabs>
+  <TabItem label="Python">
+    ```python
+    cell = Cell.connect("cell_id_here")
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```typescript
+    const cell = await Cell.connect("cell_id_here");
+    ```
+  </TabItem>
+</Tabs>
+
+## Listing Sandboxes
+
+<Tabs>
+  <TabItem label="Python">
+    ```python
+    cells = Cell.list()
+    for info in cells:
+        print(f"{info.sandbox_id}: {info.state}")
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```typescript
+    const paginator = Cell.list({ limit: 50 });
+    while (paginator.hasNext) {
+      const items = await paginator.nextItems();
+      items.forEach(info => console.log(`${info.sandboxId}: ${info.state}`));
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+## Pause and Resume
+
+Sandbox state is preserved across pause/resume cycles:
+
+```python
+# Pause — creates a filesystem snapshot
+snapshot = cell.pause()
+print(snapshot.snapshot_id)
+
+# Resume — restores the snapshot
+cell.resume()
+```
+
+## Timeout Management
+
+```python
+# Set timeout (seconds)
+cell.set_timeout(7200)  # 2 hours
+
+# Reset inactivity timer
+cell.keep_alive(3600)
+```
+
+## Kill
+
+```python
+cell.kill()  # Destroys the sandbox and frees resources
+```
+
+<Aside type="note">
+  Persistent sandboxes survive gateway restarts. Ephemeral sandboxes are cleaned up when the gateway restarts.
+</Aside>

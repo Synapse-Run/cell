@@ -1,0 +1,67 @@
+/* Synapse Docs — Custom Starlight Overrides */
+
+:root {
+  --sl-color-accent-low: #0d3b2e;
+  --sl-color-accent: #4ae3b5;
+  --sl-color-accent-high: #b8f5e0;
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #eceef2;
+  --sl-color-gray-2: #c0c2c7;
+  --sl-color-gray-3: #888b96;
+  --sl-color-gray-4: #545861;
+  --sl-color-gray-5: #353841;
+  --sl-color-gray-6: #24272f;
+  --sl-color-black: #17181c;
+  --sl-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --sl-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Override heading style */
+h1, h2, h3 {
+  font-weight: 700;
+}
+
+/* Code block styling */
+.expressive-code pre {
+  border-radius: 8px !important;
+  border: 1px solid var(--sl-color-gray-5) !important;
+}
+
+/* Badge styling for "Unique" sovereignty features */
+.sl-badge {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+}
+
+/* Custom hero section on index */
+.hero-benchmarks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.hero-benchmarks .stat {
+  background: var(--sl-color-gray-6);
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.hero-benchmarks .stat .value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--sl-color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-benchmarks .stat .label {
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 0.25rem;
+}

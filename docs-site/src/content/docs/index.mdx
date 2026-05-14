@@ -1,0 +1,110 @@
+---
+title: Synapse — Sovereign Code Execution
+description: 205× faster sandboxes with cryptographic execution receipts. Drop-in E2B replacement. Self-hosted.
+template: splash
+hero:
+  title: |
+    Sovereign
+    <span style="color: var(--sl-color-accent);">Code Execution</span>
+  tagline: Wasm-isolated sandboxes for AI agents. 205× faster than E2B. Cryptographic receipts on every execution. Self-hosted or managed. Drop-in compatible.
+  image:
+    alt: Synapse Hexagon
+    file: ../../assets/synapse-logo.svg
+  actions:
+    - text: Get Started
+      link: /getting-started/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/Synapse-Run
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+<div class="hero-benchmarks">
+  <div class="stat">
+    <div class="value">205×</div>
+    <div class="label">Faster Cold Start</div>
+  </div>
+  <div class="stat">
+    <div class="value">SHA-256</div>
+    <div class="label">Execution Receipts</div>
+  </div>
+  <div class="stat">
+    <div class="value">$0.001</div>
+    <div class="label">Per Execution</div>
+  </div>
+</div>
+
+## Why Synapse?
+
+<CardGrid>
+  <Card title="Drop-in E2B Replacement" icon="puzzle">
+    Change one import line. Your LangChain, CrewAI, and OpenAI agents work instantly.
+    Full API compatibility with `e2b_code_interpreter`.
+  </Card>
+  <Card title="205× Faster" icon="rocket">
+    Wasm-native isolation eliminates Docker cold starts.
+    Sub-millisecond execution where E2B takes 200ms+.
+  </Card>
+  <Card title="Sovereign by Default" icon="shield">
+    Every execution produces a SHA-256 receipt chain.
+    Your code never leaves your infrastructure. EU/CA data residency.
+  </Card>
+  <Card title="Self-Hosted" icon="setting">
+    Run on your own hardware. No vendor lock-in.
+    Single Rust binary. No Kubernetes required.
+  </Card>
+</CardGrid>
+
+## Quickstart
+
+```bash
+pip install synapserun
+```
+
+```python
+from synapse import Cell
+
+cell = Cell()
+result = cell.run("print('Hello from Synapse!')")
+print(result.stdout)     # Hello from Synapse!
+print(result.receipt)    # SHA-256 execution receipt
+cell.kill()
+```
+
+Or in TypeScript:
+
+```typescript
+import { Cell } from '@runsynapse/sdk';
+
+const cell = await Cell.create({ apiKey: process.env.SYNAPSE_API_KEY });
+const result = await cell.run("print('Hello from Synapse!')");
+console.log(result.stdout); // Hello from Synapse!
+await cell.kill();
+```
+
+<CardGrid>
+  <LinkCard
+    title="Quickstart Guide"
+    description="Create your first sandbox in 5 minutes."
+    href="/getting-started/quickstart/"
+  />
+  <LinkCard
+    title="Migrating from E2B"
+    description="Switch in under 10 minutes. One import change."
+    href="/getting-started/migrating-from-e2b/"
+  />
+  <LinkCard
+    title="API Reference"
+    description="Full REST API and SDK documentation."
+    href="/api/rest/"
+  />
+  <LinkCard
+    title="Agent Integrations"
+    description="LangChain, CrewAI, OpenAI, Claude, and more."
+    href="/integrations/langchain/"
+  />
+</CardGrid>

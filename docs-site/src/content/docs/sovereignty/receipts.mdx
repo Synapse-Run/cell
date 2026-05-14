@@ -1,0 +1,41 @@
+---
+title: Execution Receipts
+description: Cryptographic proof of every code execution.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What Are Execution Receipts?
+
+Every code execution in Synapse produces a **SHA-256 cryptographic receipt** — a tamper-proof record of what code ran, what it returned, and when.
+
+<Aside type="note">
+  This feature is unique to Synapse. No other sandbox platform provides cryptographic execution verification.
+</Aside>
+
+## Receipt Structure
+
+```json
+{
+  "execution_id": "exec_a1b2c3d4e5f6",
+  "code_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "result_hash": "sha256:4f3c2b1a9d8e7f6c5b4a3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2",
+  "template": "python3",
+  "timestamp": 1715702400000
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `execution_id` | Unique ID for this execution |
+| `code_hash` | SHA-256 hash of the input source code |
+| `result_hash` | SHA-256 hash of stdout + stderr + exit_code |
+| `template` | Runtime template used |
+| `timestamp` | Unix millisecond timestamp |
+
+## Use Cases
+
+- **Audit trails** — Prove exactly what code your AI agent executed
+- **Reproducibility** — Verify that re-running the same code produces the same result
+- **Compliance** — Meet regulatory requirements for auditable AI execution
+- **Tamper detection** — Detect if execution results have been modified

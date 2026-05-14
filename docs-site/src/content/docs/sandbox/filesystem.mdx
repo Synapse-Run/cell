@@ -1,0 +1,88 @@
+---
+title: Filesystem
+description: Read, write, list, and manage files inside sandboxes.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Write Files
+
+<Tabs>
+  <TabItem label="Python">
+    ```python
+    cell.write_file("config.json", '{"model": "gpt-4"}')
+    cell.write_file("data/input.csv", csv_content)
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```typescript
+    await cell.writeFile("config.json", '{"model": "gpt-4"}');
+    ```
+  </TabItem>
+</Tabs>
+
+## Read Files
+
+```python
+content = cell.read_file("config.json")
+print(content)  # {"model": "gpt-4"}
+```
+
+## List Directory
+
+```python
+entries = cell.list_files("/data/")
+for entry in entries:
+    print(f"{entry.type} {entry.name} ({entry.size} bytes)")
+```
+
+## File Info
+
+```python
+info = cell.file_info("config.json")
+print(info.name)          # config.json
+print(info.type)          # file
+print(info.size)          # 19
+print(info.permissions)   # rw-r--r--
+print(info.modified_time) # 2026-05-14T12:00:00Z
+```
+
+## Check Existence
+
+```python
+if cell.file_exists("output.txt"):
+    data = cell.read_file("output.txt")
+```
+
+## Create Directories
+
+```python
+cell.make_dir("data/processed/2026")  # Creates parents
+```
+
+## Rename / Move
+
+```python
+cell.rename_file("old_name.txt", "new_name.txt")
+cell.rename_file("data/raw.csv", "data/processed/clean.csv")
+```
+
+## Remove Files
+
+```python
+cell.remove_file("temp.txt")
+cell.remove_file("data/cache/")  # Removes directories too
+```
+
+## E2B Compatibility
+
+If using the E2B compat layer, the familiar `sandbox.files` namespace works:
+
+```python
+from synapse.e2b_compat import Sandbox
+
+sbx = Sandbox()
+sbx.files.write("/home/user/hello.txt", "Hello!")
+content = sbx.files.read("/home/user/hello.txt")
+entries = sbx.files.list("/home/user/")
+```

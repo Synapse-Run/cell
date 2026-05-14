@@ -1,0 +1,90 @@
+---
+title: Installation
+description: Install the Synapse SDK for Python or TypeScript.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+## Requirements
+
+- **Python**: 3.9 or later
+- **Node.js**: 18 or later (for TypeScript SDK)
+
+## Install
+
+<Tabs>
+  <TabItem label="Python (pip)">
+    ```bash
+    pip install synapserun
+    ```
+  </TabItem>
+  <TabItem label="Python (uv)">
+    ```bash
+    uv add synapserun
+    ```
+  </TabItem>
+  <TabItem label="TypeScript (npm)">
+    ```bash
+    npm install @runsynapse/sdk
+    ```
+  </TabItem>
+  <TabItem label="TypeScript (pnpm)">
+    ```bash
+    pnpm add @runsynapse/sdk
+    ```
+  </TabItem>
+</Tabs>
+
+## CLI Tool
+
+The Python package includes the `synapse` CLI:
+
+```bash
+synapse --help
+synapse sandbox create
+synapse sandbox list
+synapse template list
+```
+
+## Authentication
+
+Set your API key as an environment variable:
+
+```bash
+export SYNAPSE_API_KEY="cell_sk_live_..."
+```
+
+Or pass it directly:
+
+<Tabs>
+  <TabItem label="Python">
+    ```python
+    from synapse import Cell
+    cell = Cell(api_key="cell_sk_live_...")
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```typescript
+    import { Cell } from '@runsynapse/sdk';
+    const cell = await Cell.create({ apiKey: 'cell_sk_live_...' });
+    ```
+  </TabItem>
+</Tabs>
+
+## Self-Hosted Gateway
+
+For self-hosted deployments, point the SDK at your gateway:
+
+```bash
+export SYNAPSE_API_URL="http://your-server:8001"
+```
+
+<Aside type="tip">
+  Self-hosted mode does not require an API key by default. Configure authentication in your gateway settings.
+</Aside>
+
+## Verify Installation
+
+```bash
+python -c "from synapse import Cell; print('Synapse SDK ready')"
+```

@@ -1,0 +1,178 @@
+---
+title: Migrating from E2B
+description: Switch from E2B to Synapse in under 10 minutes. One import change.
+---
+
+import { Tabs, TabItem, Aside, Steps, Badge } from '@astrojs/starlight/components';
+
+<Aside type="tip" title="The 30-second migration">
+  For most projects, switching from E2B to Synapse is a single import change. Your existing code works as-is.
+</Aside>
+
+## Step 1: Install the Synapse SDK
+
+<Tabs>
+  <TabItem label="Python">
+    ```bash
+    pip install synapserun
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```bash
+    npm install @runsynapse/sdk
+    ```
+  </TabItem>
+</Tabs>
+
+## Step 2: Change One Import
+
+<Tabs>
+  <TabItem label="Python">
+    ```diff
+    - from e2b_code_interpreter import Sandbox
+    + from synapse.e2b_compat import Sandbox
+    ```
+
+    That's it. Every E2B method works identically:
+
+    ```python
+    from synapse.e2b_compat import Sandbox
+
+    # Your existing E2B code — zero changes needed
+    sbx = Sandbox()
+    execution = sbx.run_code("x = 42\nprint(x * 2)")
+    print(execution.logs.stdout)  # ['84']
+    sbx.kill()
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```diff
+    - import { Sandbox } from '@e2b/code-interpreter';
+    + import { Sandbox } from '@runsynapse/sdk';
+    ```
+
+    ```typescript
+    import { Sandbox } from '@runsynapse/sdk';
+
+    // Your existing E2B code — zero changes needed
+    const sbx = await Sandbox.create();
+    const execution = await sbx.runCode("print(2 + 2)");
+    console.log(execution.logs.stdout); // ['4']
+    await sbx.kill();
+    ```
+  </TabItem>
+</Tabs>
+
+## API Compatibility Matrix
+
+Every E2B Sandbox method has a Synapse equivalent:
+
+| E2B Method | Synapse Method | Status |
+|-----------|---------------|--------|
+| `Sandbox()` / `Sandbox.create()` | `Sandbox()` / `Cell()` | ✅ |
+| `sandbox.run_code(code)` | `sandbox.run_code(code)` | ✅ |
+| `sandbox.commands.run(cmd)` | `sandbox.commands.run(cmd)` | ✅ |
+| `sandbox.files.write(path, data)` | `sandbox.files.write(path, data)` | ✅ |
+| `sandbox.files.read(path)` | `sandbox.files.read(path)` | ✅ |
+| `sandbox.files.list(path)` | `sandbox.files.list(path)` | ✅ |
+| `sandbox.files.exists(path)` | `sandbox.files.exists(path)` | ✅ |
+| `sandbox.files.make_dir(path)` | `sandbox.files.make_dir(path)` | ✅ |
+| `sandbox.files.remove(path)` | `sandbox.files.remove(path)` | ✅ |
+| `sandbox.files.rename(old, new)` | `sandbox.files.rename(old, new)` | ✅ |
+| `sandbox.files.get_info(path)` | `sandbox.files.get_info(path)` | ✅ |
+| `Sandbox.connect(id)` | `Sandbox.connect(id)` | ✅ |
+| `Sandbox.list()` | `Sandbox.list()` | ✅ |
+| `sandbox.get_info()` | `sandbox.get_info()` | ✅ |
+| `sandbox.set_timeout(s)` | `sandbox.set_timeout(s)` | ✅ |
+| `sandbox.keep_alive(s)` | `sandbox.keep_alive(s)` | ✅ |
+| `sandbox.pause()` | `sandbox.pause()` | ✅ |
+| `sandbox.resume()` | `sandbox.resume()` | ✅ |
+| `sandbox.kill()` | `sandbox.kill()` | ✅ |
+
+## What You Gain
+
+Switching to Synapse gives you features E2B doesn't have:
+
+### Cryptographic Execution Receipts
+
+Every execution returns a SHA-256 receipt proving exactly what code ran and what it returned:
+
+```python
+result = cell.run("print(42)")
+print(result.receipt.code_hash)    # sha256:...
+print(result.receipt.result_hash)  # sha256:...
+print(result.receipt.execution_id) # exec_a1b2c3...
+```
+
+### 205× Faster Cold Starts
+
+Synapse uses Wasm isolation instead of Docker containers. No cold starts.
+
+| Metric | E2B | Synapse |
+|--------|-----|---------|
+| Cold start | ~200ms | **sub-1ms** |
+| Exec latency | ~50ms | **0.24ms** |
+| Isolation | Docker | Wasm (memory-safe) |
+
+### Self-Hosted
+
+Run on your own infrastructure. Single binary. No Kubernetes.
+
+```bash
+# Pull and run the gateway
+docker run -p 8001:8001 ghcr.io/synapse-run/cell-gateway:latest
+
+# Point your SDK at it
+export SYNAPSE_API_URL="http://localhost:8001"
+```
+
+### Data Sovereignty
+
+Your code and data never leave your infrastructure. EU/Canadian data residency built in.
+
+## Agent Framework Migration
+
+### LangChain
+
+```diff
+- from e2b_code_interpreter import Sandbox
+- from langchain_e2b import E2BCodeInterpreterTool
++ from synapse.langchain_tool import SynapseCellExecuteTool
+
+- tool = E2BCodeInterpreterTool(api_key="...")
++ tool = SynapseCellExecuteTool(api_key="...")
+```
+
+### CrewAI
+
+```diff
+- from e2b_code_interpreter import Sandbox
++ from synapse.crewai_tool import SynapseCellCrewTool
+
+- tool = E2BCodeInterpreterTool(api_key="...")
++ tool = SynapseCellCrewTool(api_key="...")
+```
+
+### OpenAI Agents
+
+```diff
+- from e2b_code_interpreter import Sandbox
++ from synapse.openai_agents_tool import SynapseCellOpenAITool
+
+- tool = E2BCodeInterpreter()
++ tool = SynapseCellOpenAITool()
+```
+
+## Environment Variables
+
+| E2B Variable | Synapse Variable | Notes |
+|-------------|------------------|-------|
+| `E2B_API_KEY` | `SYNAPSE_API_KEY` | Your API key |
+| `E2B_API_URL` | `SYNAPSE_API_URL` | Gateway URL (default: managed cloud) |
+| — | `SYNAPSE_VERIFY_RECEIPTS` | Enable receipt verification (default: true) |
+
+## Need Help?
+
+- [GitHub Issues](https://github.com/Synapse-Run/sdk/issues) — Bug reports and feature requests
+- [API Reference](/api/rest/) — Full REST API documentation
+- [Self-Hosting Guide](/sovereignty/self-hosting/) — Deploy on your own hardware

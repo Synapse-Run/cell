@@ -14,7 +14,7 @@ info:
     url: https://synapserun.dev
   license:
     name: Apache 2.0 (core) / AGPL v3 (Pro+Hub)
-    url: https://github.com/Synapse-Run/cell/blob/main/LICENSE
+    url: https://github.com/Freshfield-AI/synapse/blob/main/cell/LICENSE
 
 servers:
   - url: https://cell.synapserun.dev
@@ -43,6 +43,8 @@ tags:
     description: HTTP proxy (host_fetch)
   - name: WebSocket
     description: REPL and PTY terminal endpoints
+  - name: Events
+    description: Lifecycle events and webhook subscriptions
 
 paths:
   /v1/templates:
@@ -791,6 +793,87 @@ paths:
               schema:
                 type: string
 
+  /v1/events:
+    get:
+      tags: [Events]
+      summary: Get global lifecycle events
+      description: Returns the last 100 lifecycle events across all cells.
+      responses:
+        '200':
+          description: List of lifecycle events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LifecycleEvent'
+
+  /v1/cells/{id}/events:
+    get:
+      tags: [Events]
+      summary: Get lifecycle events for a cell
+      description: Returns lifecycle events for a specific cell (create, pause, resume, kill, exec).
+      parameters:
+        - $ref: '#/components/parameters/CellId'
+      responses:
+        '200':
+          description: List of lifecycle events for this cell
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LifecycleEvent'
+
+  /v1/webhooks:
+    post:
+      tags: [Events]
+      summary: Register a webhook
+      description: |
+        Subscribe to lifecycle event notifications. The gateway will POST
+        JSON payloads to the specified URL when matching events occur.
+        Supported events: cell.created, cell.killed, cell.paused,
+        cell.resumed, exec.completed, or "*" for all.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookRegistration'
+      responses:
+        '201':
+          description: Webhook registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+    get:
+      tags: [Events]
+      summary: List all registered webhooks
+      responses:
+        '200':
+          description: List of webhooks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Webhook'
+
+  /v1/webhooks/{webhook_id}:
+    delete:
+      tags: [Events]
+      summary: Delete a webhook
+      parameters:
+        - name: webhook_id
+          in: path
+          required: true
+          schema: { type: string }
+          description: Webhook ID
+      responses:
+        '200':
+          description: Webhook deleted
+
 components:
   parameters:
     CellId:
@@ -906,3 +989,33 @@ components:
         owner: { type: string }
         group: { type: string }
         modified_time: { type: string, format: date-time, nullable: true }
+
+    WebhookRegistration:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: HTTP endpoint to receive POST callbacks
+        events:
+          type: array
+          items: { type: string }
+          default: ["*"]
+          description: 'Event types to subscribe to. Default: ["*"] for all.'
+
+    Webhook:
+      type: object
+      properties:
+        webhook_id: { type: string }
+        url: { type: string, format: uri }
+        events: { type: array, items: { type: string } }
+        created_at: { type: string, format: date-time }
+
+    LifecycleEvent:
+      type: object
+      properties:
+        event: { type: string, description: "Event type (cell.created, cell.killed, cell.paused, cell.resumed, exec.completed)" }
+        cell_id: { type: string }
+        detail: { type: object }
+        timestamp: { type: integer, description: "Unix ms timestamp" }

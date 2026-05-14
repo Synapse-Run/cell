@@ -1,0 +1,180 @@
+---
+title: Quickstart
+description: Create your first Synapse sandbox in 5 minutes.
+---
+
+import { Tabs, TabItem, Steps, Aside } from '@astrojs/starlight/components';
+
+## Install the SDK
+
+<Tabs>
+  <TabItem label="Python">
+    ```bash
+    pip install synapserun
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```bash
+    npm install @runsynapse/sdk
+    ```
+  </TabItem>
+</Tabs>
+
+## Get an API Key
+
+Set your API key as an environment variable:
+
+```bash
+export SYNAPSE_API_KEY="cell_sk_live_..."
+```
+
+<Aside type="tip">
+  For self-hosted deployments, you can skip the API key and connect directly to your gateway at `http://localhost:8001`.
+</Aside>
+
+## Create and Run a Sandbox
+
+<Tabs>
+  <TabItem label="Python">
+
+<Steps>
+
+1. **Create a sandbox**
+
+    ```python
+    from synapse import Cell
+
+    cell = Cell()  # or Cell(api_key="...", template="python3")
+    ```
+
+2. **Execute code**
+
+    ```python
+    result = cell.run("x = 42")
+    result = cell.run("print(x * 2)")
+    print(result.stdout)  # "84"
+    ```
+
+3. **Work with files**
+
+    ```python
+    cell.write_file("hello.txt", "Hello from Synapse!")
+    content = cell.read_file("hello.txt")
+    print(content)  # "Hello from Synapse!"
+    ```
+
+4. **Run shell commands**
+
+    ```python
+    result = cell.command("ls -la /data/")
+    print(result.stdout)
+    ```
+
+5. **Clean up**
+
+    ```python
+    cell.kill()
+    ```
+
+</Steps>
+
+  </TabItem>
+  <TabItem label="TypeScript">
+
+<Steps>
+
+1. **Create a sandbox**
+
+    ```typescript
+    import { Cell } from '@runsynapse/sdk';
+
+    const cell = await Cell.create();
+    ```
+
+2. **Execute code**
+
+    ```typescript
+    await cell.run("x = 42");
+    const result = await cell.run("print(x * 2)");
+    console.log(result.stdout); // "84"
+    ```
+
+3. **Work with files**
+
+    ```typescript
+    await cell.writeFile("hello.txt", "Hello from Synapse!");
+    const content = await cell.readFile("hello.txt");
+    console.log(content); // "Hello from Synapse!"
+    ```
+
+4. **Run shell commands**
+
+    ```typescript
+    const result = await cell.command("ls -la /data/");
+    console.log(result.stdout);
+    ```
+
+5. **Clean up**
+
+    ```typescript
+    await cell.kill();
+    ```
+
+</Steps>
+
+  </TabItem>
+</Tabs>
+
+## Verify Execution Receipts
+
+Every execution returns a cryptographic receipt — a SHA-256 hash of the code, result, and timestamp:
+
+```python
+result = cell.run("print(2 + 2)")
+print(result.receipt)
+# {
+#   "execution_id": "exec_a1b2c3...",
+#   "code_hash":    "sha256:e3b0c44...",
+#   "result_hash":  "sha256:4f3c2b1...",
+#   "template":     "python3",
+#   "timestamp":    1715702400000
+# }
+```
+
+<Aside type="note">
+  Execution receipts are unique to Synapse. E2B does not provide cryptographic verification of code execution.
+</Aside>
+
+## Streaming Output
+
+For long-running code, stream stdout/stderr in real-time:
+
+<Tabs>
+  <TabItem label="Python">
+    ```python
+    result = cell.run(
+        "import time\nfor i in range(5):\n    print(f'Step {i}')\n    time.sleep(1)",
+        on_stdout=lambda line: print(f"[live] {line}"),
+        on_stderr=lambda line: print(f"[err] {line}"),
+    )
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```typescript
+    const result = await cell.run(
+      `import time\nfor i in range(5):\n    print(f'Step {i}')\n    time.sleep(1)`,
+      {
+        onStdout: (line) => console.log(`[live] ${line}`),
+        onStderr: (line) => console.log(`[err] ${line}`),
+      }
+    );
+    ```
+  </TabItem>
+</Tabs>
+
+## Next Steps
+
+- [Migrating from E2B](/getting-started/migrating-from-e2b/) — Switch in under 10 minutes
+- [Running Code](/sandbox/running-code/) — Advanced execution patterns
+- [Filesystem](/sandbox/filesystem/) — Full file operations reference
+- [Agent Integrations](/integrations/langchain/) — Use with LangChain, CrewAI, OpenAI

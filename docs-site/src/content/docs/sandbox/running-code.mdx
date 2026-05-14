@@ -1,0 +1,75 @@
+---
+title: Running Code
+description: Execute Python, JavaScript, and shell commands in sandboxes.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+## Basic Execution
+
+State persists between `run()` calls within the same sandbox:
+
+```python
+cell.run("x = 42")
+result = cell.run("print(x * 2)")
+print(result.stdout)     # "84"
+print(result.exit_code)  # 0
+print(result.latency_ms) # 0.24
+```
+
+## Streaming Output
+
+For long-running code, use callbacks to stream output in real-time:
+
+<Tabs>
+  <TabItem label="Python">
+    ```python
+    result = cell.run(
+        "for i in range(10): print(f'Processing {i}')",
+        on_stdout=lambda line: print(f"[live] {line}"),
+        on_stderr=lambda line: print(f"[err]  {line}"),
+    )
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```typescript
+    const result = await cell.run(code, {
+      onStdout: (line) => console.log(`[live] ${line}`),
+      onStderr: (line) => console.error(`[err]  ${line}`),
+    });
+    ```
+  </TabItem>
+</Tabs>
+
+## Background Commands
+
+Run commands asynchronously and poll for results:
+
+```python
+handle = cell.command("pip install pandas && python train.py", background=True)
+
+# Poll status
+while handle.is_running:
+    time.sleep(1)
+
+print(handle.stdout)
+print(handle.exit_code)
+```
+
+## Execution Receipts
+
+Every execution returns a cryptographic receipt:
+
+```python
+result = cell.run("print(2 + 2)")
+receipt = result.receipt
+
+print(receipt.execution_id)  # Unique ID
+print(receipt.code_hash)     # SHA-256 of input code
+print(receipt.result_hash)   # SHA-256 of output
+print(receipt.timestamp)     # Unix ms
+```
+
+<Aside type="tip">
+  Receipts enable audit trails, reproducibility verification, and tamper-proof execution logs — features no other sandbox platform provides.
+</Aside>

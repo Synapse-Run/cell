@@ -2,8 +2,8 @@
  * E2B-compatible Sandbox API for Synapse Cell.
  *
  * Talks to a Synapse Cell gateway over HTTP. Get a running gateway via:
- *   - Local dev: `docker run -p 8001:8001 ghcr.io/synapse-run/cell:latest`
- *   - Self-hosted: see https://github.com/Synapse-Run/cell/blob/main/docs/SELF_HOSTED.md
+ *   - Local dev: `docker run -p 8001:8001 ghcr.io/freshfield-ai/cell-gateway:latest`
+ *   - Self-hosted: see https://github.com/Freshfield-AI/synapse/blob/main/cell/docs/SELF_HOSTED.md
  *   - Cloud (coming Q1 2026): localhost:8002
  *
  * @example
@@ -182,7 +182,7 @@ export class Sandbox {
    * Create a new sandbox via the gateway.
    *
    * Requires a reachable Synapse Cell gateway. For local dev:
-   *   docker run -p 8001:8001 ghcr.io/synapse-run/cell:latest
+   *   docker run -p 8001:8001 ghcr.io/freshfield-ai/cell-gateway:latest
    *   new Sandbox({ apiUrl: 'http://localhost:8001' })
    */
   static async create(opts?: SandboxOpts): Promise<Sandbox> {
@@ -324,6 +324,262 @@ export class Sandbox {
   async close(): Promise<void> {
     return this.kill();
   }
+
+  // ─── Lifecycle Management ─────────────────────────────────────
+
+  /**
+   * Pause the sandbox and create a snapshot.
+   */
+  async pause(): Promise<Record<string, unknown>> {
+    return this.request(`/v1/cells/${this.id}/pause`);
+  }
+
+  /**
+   * Resume a paused sandbox from its snapshot.
+   */
+  async resume(): Promise<Record<string, unknown>> {
+    return this.request(`/v1/cells/${this.id}/resume`);
+  }
+
+  /**
+   * Set inactivity timeout in milliseconds.
+   */
+  async setTimeout(timeoutMs: number): Promise<void> {
+    await this.request(`/v1/cells/${this.id}/timeout`, { timeout_ms: timeoutMs }, 'PUT');
+  }
+
+  /**
+   * Reset the inactivity timer. The sandbox will stay alive for another
+   * `duration` milliseconds (default: the original timeout).
+   */
+  async keepAlive(durationMs?: number): Promise<void> {
+    const body: Record<string, unknown> = {};
+    if (durationMs !== undefined) body.timeout_ms = durationMs;
+    await this.request(`/v1/cells/${this.id}/refresh`, body);
+  }
+
+  /**
+   * Check if the sandbox is still running.
+   */
+  async isRunning(): Promise<boolean> {
+    const body = await this.request(`/v1/cells/${this.id}/is_running`, undefined, 'GET');
+    return (body as { running: boolean }).running ?? false;
+  }
+
+  // ─── Streaming Execution ──────────────────────────────────────
+
+  /**
+   * Run code with Server-Sent Events (SSE) streaming.
+   *
+   * @param code - The code to execute.
+   * @param opts - Streaming callbacks: onStdout, onStderr, onResult, onError.
+   * @returns Final Execution result after stream completes.
+   */
+  async runCodeStream(code: string, opts?: RunCodeOpts): Promise<Execution> {
+    const apiUrl = this.apiUrl;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    };
+    if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
+
+    const resp = await fetch(
+      `${apiUrl}/v1/cells/${this.id}/exec/stream`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ code, language: opts?.language }),
+      },
+    );
+
+    if (!resp.ok) {
+      throw new CellError(`HTTP ${resp.status} at /exec/stream`);
+    }
+
+    const stdoutLines: string[] = [];
+    const stderrLines: string[] = [];
+    let exitCode = 0;
+    let latencyMs = 0;
+
+    // Parse SSE stream
+    const text = await resp.text();
+    for (const line of text.split('\n')) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const event = JSON.parse(line.slice(6));
+        if (event.stdout) {
+          const msg = { line: event.stdout, timestamp: Date.now(), error: false };
+          stdoutLines.push(event.stdout);
+          if (opts?.onStdout) await opts.onStdout(msg);
+        }
+        if (event.stderr) {
+          const msg = { line: event.stderr, timestamp: Date.now(), error: true };
+          stderrLines.push(event.stderr);
+          if (opts?.onStderr) await opts.onStderr(msg);
+        }
+        if (event.exit_code !== undefined) exitCode = event.exit_code;
+        if (event.latency_ms !== undefined) latencyMs = event.latency_ms;
+      } catch { /* skip unparseable lines */ }
+    }
+
+    return {
+      results: stdoutLines.length ? [{ text: stdoutLines.join('\n') }] : [],
+      logs: { stdout: stdoutLines, stderr: stderrLines },
+      exitCode,
+      latencyMs,
+    };
+  }
+
+  // ─── Process Management ───────────────────────────────────────
+
+  /**
+   * List running processes in the sandbox.
+   */
+  async listProcesses(): Promise<Record<string, unknown>[]> {
+    const body = await this.request(
+      `/v1/cells/${this.id}/processes`, undefined, 'GET',
+    );
+    return (body as { processes?: Record<string, unknown>[] }).processes ?? [];
+  }
+
+  /**
+   * Send stdin to a running process.
+   */
+  async sendStdin(processId: string, data: string): Promise<void> {
+    await this.request(
+      `/v1/cells/${this.id}/processes/${processId}/stdin`,
+      { data },
+    );
+  }
+
+  /**
+   * Kill a background process.
+   */
+  async killProcess(processId: string): Promise<void> {
+    await this.request(
+      `/v1/cells/${this.id}/processes/${processId}/kill`,
+      {},
+    );
+  }
+
+  // ─── Environment Variables ────────────────────────────────────
+
+  /**
+   * Get environment variables for the sandbox.
+   */
+  async getEnvs(): Promise<Record<string, string>> {
+    const body = await this.request(
+      `/v1/cells/${this.id}/envs`, undefined, 'GET',
+    );
+    return (body as { envs: Record<string, string> }).envs ?? body as Record<string, string>;
+  }
+
+  /**
+   * Set environment variables. Merges with existing.
+   */
+  async setEnvs(envs: Record<string, string>): Promise<void> {
+    await this.request(`/v1/cells/${this.id}/envs`, envs, 'PUT');
+  }
+
+  // ─── Snapshots ────────────────────────────────────────────────
+
+  /**
+   * List available snapshots for this sandbox.
+   */
+  async listSnapshots(): Promise<Record<string, unknown>[]> {
+    const body = await this.request(
+      `/v1/cells/${this.id}/snapshots`, undefined, 'GET',
+    );
+    return body as unknown as Record<string, unknown>[];
+  }
+
+  // ─── Metadata ─────────────────────────────────────────────────
+
+  /**
+   * Update sandbox metadata (key-value tags).
+   */
+  async setMetadata(metadata: Record<string, string>): Promise<void> {
+    await this.request(`/v1/cells/${this.id}/metadata`, metadata, 'PUT');
+  }
+
+  /**
+   * Get sandbox metadata.
+   */
+  async getMetadata(): Promise<Record<string, string>> {
+    const body = await this.request(
+      `/v1/cells/${this.id}/metadata`, undefined, 'GET',
+    );
+    return body as Record<string, string>;
+  }
+
+  // ─── Lifecycle Events & Webhooks ──────────────────────────────
+
+  /**
+   * Get lifecycle events for this sandbox (create, pause, resume, kill, etc.).
+   */
+  async getLifecycleEvents(): Promise<Record<string, unknown>[]> {
+    const body = await this.request(
+      `/v1/cells/${this.id}/events`, undefined, 'GET',
+    );
+    return body as unknown as Record<string, unknown>[];
+  }
+
+  /**
+   * Get global lifecycle events across all sandboxes (last 100).
+   */
+  static async getGlobalEvents(apiUrl?: string): Promise<Record<string, unknown>[]> {
+    const url = apiUrl ?? resolveApiUrl();
+    const body = await doRequest(url, '/v1/events', '', undefined, 'GET');
+    return body as unknown as Record<string, unknown>[];
+  }
+
+  /**
+   * Register a webhook to receive lifecycle event notifications.
+   *
+   * @param webhookUrl - HTTP endpoint to receive POST callbacks.
+   * @param events - Event types to subscribe to. Default: ["*"] for all.
+   * @param apiUrl - Gateway URL.
+   */
+  static async registerWebhook(
+    webhookUrl: string,
+    events: string[] = ['*'],
+    apiUrl?: string,
+  ): Promise<Record<string, unknown>> {
+    const url = apiUrl ?? resolveApiUrl();
+    return doRequest(url, '/v1/webhooks', '', { url: webhookUrl, events });
+  }
+
+  /**
+   * List all registered webhooks.
+   */
+  static async listWebhooks(apiUrl?: string): Promise<Record<string, unknown>[]> {
+    const url = apiUrl ?? resolveApiUrl();
+    const body = await doRequest(url, '/v1/webhooks', '', undefined, 'GET');
+    return body as unknown as Record<string, unknown>[];
+  }
+
+  /**
+   * Delete a webhook by ID.
+   */
+  static async deleteWebhook(
+    webhookId: string,
+    apiUrl?: string,
+  ): Promise<void> {
+    const url = apiUrl ?? resolveApiUrl();
+    await doRequest(url, `/v1/webhooks/${webhookId}`, '', undefined, 'DELETE');
+  }
+
+  // ─── Static: List sandboxes ───────────────────────────────────
+
+  /**
+   * List all running sandboxes.
+   */
+  static async list(opts?: SandboxOpts): Promise<Record<string, unknown>[]> {
+    const apiKey = resolveApiKey(opts);
+    const apiUrl = resolveApiUrl(opts);
+    const body = await doRequest(apiUrl, '/v1/cells', apiKey, undefined, 'GET');
+    return (body as { cells?: Record<string, unknown>[] }).cells ?? [];
+  }
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -349,9 +605,9 @@ function resolveApiUrl(opts?: SandboxOpts): string {
     throw new CellError(
       'No Synapse Cell gateway URL configured. Set apiUrl in options, ' +
         'or the SYNAPSE_API_URL environment variable. ' +
-        'For local dev: `docker run -p 8001:8001 ghcr.io/synapse-run/cell:latest` ' +
+        'For local dev: `docker run -p 8001:8001 ghcr.io/freshfield-ai/cell-gateway:latest` ' +
         'then pass { apiUrl: "http://localhost:8001" }. ' +
-        'See https://github.com/Synapse-Run/cell#self-hosting for details.',
+        'See https://github.com/Freshfield-AI/synapse#self-hosting for details.',
     );
   }
   return candidate.replace(/\/$/, '');
@@ -379,7 +635,7 @@ async function doRequest(
   } catch (e) {
     throw new CellError(
       `Gateway unreachable at ${apiUrl}${endpoint}: ${(e as Error).message}. ` +
-        'For local dev: `docker run -p 8001:8001 ghcr.io/synapse-run/cell:latest`',
+        'For local dev: `docker run -p 8001:8001 ghcr.io/freshfield-ai/cell-gateway:latest`',
     );
   }
   const text = await resp.text();

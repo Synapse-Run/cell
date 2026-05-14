@@ -1,0 +1,119 @@
+---
+title: Lifecycle Webhooks
+description: Receive real-time notifications when sandbox events occur.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+## Overview
+
+Synapse can POST JSON payloads to your endpoint whenever lifecycle events occur — sandbox creation, execution completion, pause/resume, or kills.
+
+<Aside type="tip">
+  Webhooks enable event-driven architectures where your backend reacts to sandbox events without polling.
+</Aside>
+
+## Supported Events
+
+| Event | Description |
+|-------|-------------|
+| `cell.created` | A new sandbox was created |
+| `cell.killed` | A sandbox was destroyed |
+| `cell.paused` | A sandbox was paused (snapshot created) |
+| `cell.resumed` | A sandbox was resumed from snapshot |
+| `exec.completed` | Code execution finished |
+| `*` | Subscribe to all events |
+
+## Register a Webhook
+
+<Tabs>
+  <TabItem label="Python">
+    ```python
+    from synapse import Cell
+
+    webhook = Cell.register_webhook(
+        url="https://your-server.com/hooks/synapse",
+        events=["cell.created", "exec.completed"],
+    )
+    print(webhook["webhook_id"])  # "wh_a1b2c3..."
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```typescript
+    import { Cell } from '@runsynapse/sdk';
+
+    const webhook = await Cell.registerWebhook(
+      "https://your-server.com/hooks/synapse",
+      ["cell.created", "exec.completed"],
+    );
+    console.log(webhook.webhook_id);
+    ```
+  </TabItem>
+  <TabItem label="cURL">
+    ```bash
+    curl -X POST http://localhost:8001/v1/webhooks \
+      -H "Content-Type: application/json" \
+      -d '{"url": "https://your-server.com/hooks/synapse", "events": ["*"]}'
+    ```
+  </TabItem>
+</Tabs>
+
+## Webhook Payload
+
+When an event fires, the gateway sends a POST request:
+
+```json
+{
+  "event": "exec.completed",
+  "cell_id": "abc123-def456-...",
+  "detail": {
+    "execution_id": "exec_a1b2c3",
+    "exit_code": 0,
+    "latency_ms": 0.24
+  },
+  "timestamp": 1715702400000
+}
+```
+
+## List Webhooks
+
+<Tabs>
+  <TabItem label="Python">
+    ```python
+    webhooks = Cell.list_webhooks()
+    for wh in webhooks:
+        print(f"{wh['webhook_id']}: {wh['url']} -> {wh['events']}")
+    ```
+  </TabItem>
+  <TabItem label="TypeScript">
+    ```typescript
+    const webhooks = await Cell.listWebhooks();
+    webhooks.forEach(wh => console.log(`${wh.webhook_id}: ${wh.url}`));
+    ```
+  </TabItem>
+</Tabs>
+
+## Delete a Webhook
+
+```python
+Cell.delete_webhook("wh_a1b2c3...")
+```
+
+## Query Lifecycle Events
+
+You can also poll events directly without webhooks:
+
+```python
+# Per-cell events
+events = cell.get_lifecycle_events()
+
+# Global events (last 100)
+events = Cell.get_global_events()
+```
+
+## Use Cases
+
+- **Billing integration** — Track `exec.completed` to count executions
+- **Monitoring** — Alert on `cell.killed` to detect unexpected terminations
+- **CI/CD pipelines** — Trigger downstream jobs when `exec.completed`
+- **Audit logging** — Archive all lifecycle events for compliance
