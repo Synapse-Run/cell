@@ -47,15 +47,15 @@ jobs:
           pip install pytest pytest-asyncio
         working-directory: sdk
       - name: Run unit tests
-        # Ignore: benchmark tests need a live gateway; test_client + test_integration
-        # reference an old `Synapse` symbol that doesn't exist in the current public
-        # surface (TODO: update or delete these two test files).
+        # Most tests under tests/ need a live gateway or the maturin-built PyO3
+        # extension. CI runs only the pure-Python tests that don't need either.
+        # TODO: split tests/ into tests/unit/ and tests/integration/ — until then
+        # this explicit allowlist is the cleanest gate.
         run: |
-          python -m pytest tests/ -v \
-            --ignore=tests/benchmark_compare.py \
-            --ignore=tests/benchmark_e2b.py \
-            --ignore=tests/test_client.py \
-            --ignore=tests/test_integration.py
+          python -m pytest -v \
+            tests/test_dockerfile_transpiler.py \
+            tests/test_templates.py \
+            tests/test_mcp.py
         working-directory: sdk
 
   # ── Lint ──────────────────────────────────────────────────
