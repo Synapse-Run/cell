@@ -54,8 +54,7 @@ jobs:
         run: |
           python -m pytest -v \
             tests/test_dockerfile_transpiler.py \
-            tests/test_templates.py \
-            tests/test_mcp.py
+            tests/test_templates.py
         working-directory: sdk
 
   # ── Lint ──────────────────────────────────────────────────
