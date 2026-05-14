@@ -1,7 +1,7 @@
 Synapse Cell
-Copyright 2026 Freshfield AI Inc.
+Copyright 2026 Mike Mazur
 
-This product includes software developed at Freshfield AI Inc. (https://synapserun.dev/).
+This product includes software developed by Mike Mazur and the Synapse Run contributors (https://synapserun.dev/).
 
 Licensing: see LICENSE (Apache 2.0 for Core), LICENSE-AGPL.md (AGPL v3 for
 Pro and Hub), and COMMERCIAL_LICENSE.md (commercial dual-license option).
@@ -100,9 +100,9 @@ TRADEMARK NOTICE
 ================================================================================
 
 "Synapse Cell," "EdgeCell," "Synapse Hub," and the Synapse logo are
-trademarks of Freshfield AI Inc.  Use of these names and marks is
-governed by TRADEMARK.md.  Source-code licenses (Apache-2.0, AGPL v3)
-do not grant trademark rights.
+trademarks of Mike Mazur. Use of these names and marks is governed
+by TRADEMARK.md. Source-code licenses (Apache-2.0, AGPL v3) do not
+grant trademark rights.
 
 ================================================================================
 CONTACT

@@ -43,19 +43,17 @@ This adds a `Signed-off-by: Your Name <your.email@example.com>` line to your com
 
 **A GitHub Action enforces DCO on every PR.** Unsigned commits will block the merge.
 
-### CLA (Contributor License Agreement) — optional, recommended for substantial contributions
+### CLA (Contributor License Agreement) — not required today
 
-For most contributions (typo fixes, single-file bug fixes, doc improvements), DCO is sufficient.
+DCO is sufficient for all contributions. We do not currently require a CLA.
 
-For **substantial contributions** (>100 lines, new modules, significant refactors), we recommend signing a CLA that assigns copyright to Freshfield AI Inc. Why?
+When the project's corporate vehicle is formed, we may introduce a CLA for substantial contributions (new modules, significant refactors) to support the [commercial dual-license](COMMERCIAL_LICENSE.md) and future relicensing flexibility (e.g., a future AGPL v4). If that happens, we will:
 
-1. It lets us continue offering the [commercial dual-license](COMMERCIAL_LICENSE.md) without breaking customer agreements.
-2. It lets us relicense (for example, to upgrade AGPL v3 to a future AGPL v4 if one ever exists) without tracking down every contributor.
-3. It protects you from being personally named in copyright suits later — Freshfield carries the legal exposure.
+1. Announce it publicly with at least 30 days' notice.
+2. Only apply it to new contributions after the announcement date — never retroactively.
+3. Keep DCO as the path for casual contributions (typos, single-file fixes, docs).
 
-The CLA is standard text — we'll send it on request. Signing is a 2-minute electronic process. We will not require it retroactively for already-merged contributions.
-
-If you prefer NOT to sign a CLA, that's fine — your contribution stays under the file's existing license (Apache 2.0 or AGPL v3) and we work within those rights.
+Until then, your `Signed-off-by` line is the only paperwork you need.
 
 ---
 

@@ -1,6 +1,6 @@
 # Synapse Cell — Security Standards
 
-**Status:** non-negotiable. **Source of truth:** this file. **Owner:** Mike Mazur (Freshfield AI Inc.).
+**Status:** non-negotiable. **Source of truth:** this file. **Owner:** Mike Mazur (Mike Mazur).
 
 This file consolidates the Red Team Standard from `.agents/workflows/cell_commercialization.md` Part 2 plus operational rules accumulated since. **If a script, test, or benchmark fails because of any rule below — fix the script, never weaken the rule.**
 

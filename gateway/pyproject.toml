@@ -10,7 +10,7 @@ readme = "README-pypi.md"
 requires-python = ">=3.8"
 license = "AGPL-3.0-or-later"
 authors = [
-    {name = "Freshfield AI", email = "hello@synapserun.dev"},
+    {name = "Mike Mazur", email = "hello@synapserun.dev"},
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

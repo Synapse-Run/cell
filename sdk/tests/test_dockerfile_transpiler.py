@@ -172,7 +172,7 @@ class TestEnvWorkdirUserLabel(unittest.TestCase):
     def test_all_metadata_directives(self):
         src = """
 FROM python:3.12
-LABEL maintainer=mike@freshfield.ai
+LABEL maintainer=test@example.com
 LABEL version=0.1.0
 ENV PYTHONPATH=/custom API_KEY=secret
 WORKDIR /srv
@@ -184,7 +184,7 @@ CMD ["python"]
         self.assertEqual(spec["envs"]["API_KEY"], "secret")
         self.assertEqual(spec["working_directory"], "/srv")
         self.assertEqual(spec["user"], "appuser")
-        self.assertEqual(spec["metadata"]["maintainer"], "mike@freshfield.ai")
+        self.assertEqual(spec["metadata"]["maintainer"], "test@example.com")
         self.assertEqual(spec["metadata"]["version"], "0.1.0")
 
 

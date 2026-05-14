@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "runtime": "python3",
   "description": "Python 3 with data science and AI agent packages. Pure-Python packages available immediately; C-extension packages (numpy, pandas, sklearn) use stub modules until Wasm-compiled builds are registered.",
-  "author": "Freshfield AI",
+  "author": "Mike Mazur",
   "packages": [
     "numpy",
     "pandas",

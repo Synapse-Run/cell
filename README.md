@@ -204,6 +204,6 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md). We use conventional commits (`feat:`, 
 ---
 
 <p align="center">
-Built by <a href="https://freshfield.ai">Freshfield AI</a>, Canada 🇨🇦<br>
+Built by <a href="https://synapserun.dev">Synapse Run</a>, Canada 🇨🇦<br>
 <em>Wasm-native. Sovereign. Self-hosted.</em>
 </p>

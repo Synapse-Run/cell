@@ -19,7 +19,7 @@
     "filesystem"
   ],
   "license": "AGPL-3.0-or-later",
-  "author": "Freshfield AI",
+  "author": "Mike Mazur",
   "repository": {
     "type": "git",
     "url": "https://github.com/Synapse-Run/cell"

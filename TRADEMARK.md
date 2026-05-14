@@ -1,6 +1,6 @@
 # Synapse Cell — Trademark Policy
 
-**Owner:** Freshfield AI Inc. (Canada) · **Contact:** trademark@synapserun.dev
+**Owner:** Mike Mazur (Canada) · **Contact:** trademark@synapserun.dev
 
 The Synapse Cell software is freely available under [Apache 2.0](LICENSE) (Core) and [AGPL v3](LICENSE-AGPL.md) (Pro and Hub). Source-code licenses grant you rights to the **code**. They do **NOT** grant rights to the **names, logos, or brand identity** that we use to identify our official products. This document explains what's protected, what's allowed, and what requires permission.
 
@@ -8,7 +8,7 @@ This is the same separation Elastic, MongoDB, Redis, Mattermost, and Mozilla all
 
 ---
 
-## What's a trademark of Freshfield AI Inc.
+## What's a trademark of Mike Mazur
 
 The following are our **protected marks**:
 
@@ -21,10 +21,9 @@ The following are our **protected marks**:
 | **The Synapse logo** | Design mark | All visual representations of the Synapse brand |
 | **synapserun.dev** | Domain | Official online presence |
 
-Status (as of 2026-04-15):
-- CIPO (Canadian Intellectual Property Office) registration: **planned** — see [ROADMAP.md](ROADMAP.md) Horizon 2 milestone 2.8
-- USPTO (United States Patent and Trademark Office) registration: **planned** — Horizon 3
-- Common-law rights apply in jurisdictions where we've used the marks publicly since 2026-04-15
+Status:
+- The marks are currently **unregistered**. CIPO (Canadian Intellectual Property Office) and USPTO (United States Patent and Trademark Office) registration is planned once the corporate vehicle is formed.
+- Common-law rights apply in jurisdictions where we have used the marks publicly.
 
 Even before formal registration, common-law trademark rights apply. Please respect them in good faith — and we'll respect yours.
 
@@ -49,11 +48,11 @@ You may freely:
 You may NOT (without our written permission):
 
 1. **Distribute a modified fork of Synapse Cell using the name "Synapse Cell," "EdgeCell," "Synapse Hub," or any confusingly similar name.** Forks must be renamed before public distribution. (Internal modified versions for your own use are fine.)
-2. **Offer a hosted service** named "Synapse Cell," "Cell Cloud," "Synapse-as-a-Service," or any name implying official affiliation with Freshfield AI Inc.
+2. **Offer a hosted service** named "Synapse Cell," "Cell Cloud," "Synapse-as-a-Service," or any name implying official affiliation with Mike Mazur.
 3. **Use the Synapse logo** in any context other than referring to our official software (e.g., on your product packaging, your company website's homepage as a product offering, etc.).
 4. **Sell merchandise** (t-shirts, mugs, stickers) bearing Synapse marks for commercial purposes.
 5. **Register a domain name** containing "synapse-cell," "synapsecell," "synapserun," "synapse-run," "runsynapse," or close variants for purposes other than community resources clearly identified as unofficial.
-6. **Imply endorsement, partnership, certification, or official affiliation** with Freshfield AI Inc. without an explicit written agreement.
+6. **Imply endorsement, partnership, certification, or official affiliation** with Mike Mazur without an explicit written agreement.
 7. **Claim "E2B parity certification" or "Synapse-verified" for your own products** without participating in our (forthcoming) certification program.
 
 ---
@@ -65,7 +64,7 @@ If you fork Synapse Cell and modify it for public distribution (commercial or no
 1. **Rename your fork** — pick a clearly distinct name. Examples that would NOT confuse: "AcmeBox," "WhaleSandbox," "TurtleCell" (just kidding), "SecureRunner-Plus." Examples that WOULD confuse: "Synapse Cell Plus," "EdgeCell-Pro," "Cell Premium."
 2. **Remove the Synapse logo** from your fork's documentation, website, and binaries. Replace with your own branding.
 3. **Update copyright headers** to reflect your modifications (Apache 2.0 §4(b) requires this anyway).
-4. **State clearly** that your product is derived from Synapse Cell, but is not affiliated with or endorsed by Freshfield AI Inc. A line in your README like "Built on Synapse Cell, but not affiliated with Freshfield AI Inc." is a good model.
+4. **State clearly** that your product is derived from Synapse Cell, but is not affiliated with or endorsed by Mike Mazur. A line in your README like "Built on Synapse Cell, but not affiliated with Mike Mazur" is a good model.
 
 This is standard open-source practice. Mozilla requires Firefox forks to rebrand (Iceweasel was the most famous example). Elastic requires OpenSearch (the AWS fork) to use its own name. We're following the same playbook.
 
@@ -81,7 +80,7 @@ If anyone could ship a modified fork called "Synapse Cell," users would have no 
 - Is current with security patches
 - Carries no spyware, backdoors, or malicious modifications
 
-Trademark protection lets us guarantee: **anything called "Synapse Cell" came from Freshfield AI Inc. and meets our quality bar.** Forks are welcome — they just have to call themselves something else.
+Trademark protection lets us guarantee: **anything called "Synapse Cell" came from Mike Mazur and meets our quality bar.** Forks are welcome — they just have to call themselves something else.
 
 This is also our **primary defense against AWS-style rehosting** of the Apache-licensed Core. AWS can fork the code (Apache 2.0 allows it), but they cannot call their service "Synapse Cell" or use our logo. If they want to use our brand, they negotiate a trademark license. If they don't, they have to brand it as something distinctly their own — at which point they're a competitor, not a vendor capturing our mindshare.
 

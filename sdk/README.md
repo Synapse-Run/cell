@@ -176,5 +176,5 @@ Contact hello@synapserun.dev for commercial licensing.
 
 ---
 
-Built by [Freshfield AI](https://freshfield.ai), Canada 🇨🇦 — Wasm-native, sovereign, self-hosted.
+Built by [Synapse Run](https://synapserun.dev), Canada 🇨🇦 — Wasm-native, sovereign, self-hosted.
 

@@ -2,7 +2,7 @@
  * E2B-compatible Sandbox API for Synapse Cell.
  *
  * Talks to a Synapse Cell gateway over HTTP. Get a running gateway via:
- *   - Local dev: `docker run -p 8001:8001 ghcr.io/freshfield-ai/cell-gateway:latest`
+ *   - Local dev: `docker run -p 8001:8001 ghcr.io/synapse-run/cell:latest`
  *   - Self-hosted: see https://github.com/Synapse-Run/cell/blob/main/docs/SELF_HOSTED.md
  *   - Cloud (coming Q1 2026): localhost:8002
  *
@@ -182,7 +182,7 @@ export class Sandbox {
    * Create a new sandbox via the gateway.
    *
    * Requires a reachable Synapse Cell gateway. For local dev:
-   *   docker run -p 8001:8001 ghcr.io/freshfield-ai/cell-gateway:latest
+   *   docker run -p 8001:8001 ghcr.io/synapse-run/cell:latest
    *   new Sandbox({ apiUrl: 'http://localhost:8001' })
    */
   static async create(opts?: SandboxOpts): Promise<Sandbox> {
@@ -349,7 +349,7 @@ function resolveApiUrl(opts?: SandboxOpts): string {
     throw new CellError(
       'No Synapse Cell gateway URL configured. Set apiUrl in options, ' +
         'or the SYNAPSE_API_URL environment variable. ' +
-        'For local dev: `docker run -p 8001:8001 ghcr.io/freshfield-ai/cell-gateway:latest` ' +
+        'For local dev: `docker run -p 8001:8001 ghcr.io/synapse-run/cell:latest` ' +
         'then pass { apiUrl: "http://localhost:8001" }. ' +
         'See https://github.com/Synapse-Run/cell#self-hosting for details.',
     );
@@ -379,7 +379,7 @@ async function doRequest(
   } catch (e) {
     throw new CellError(
       `Gateway unreachable at ${apiUrl}${endpoint}: ${(e as Error).message}. ` +
-        'For local dev: `docker run -p 8001:8001 ghcr.io/freshfield-ai/cell-gateway:latest`',
+        'For local dev: `docker run -p 8001:8001 ghcr.io/synapse-run/cell:latest`',
     );
   }
   const text = await resp.text();

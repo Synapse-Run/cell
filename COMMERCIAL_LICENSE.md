@@ -1,6 +1,6 @@
 # Synapse Cell — Commercial License
 
-**Issuer:** Freshfield AI Inc. (Canada) · **Contact:** sales@synapserun.dev
+**Issuer:** Mike Mazur (Canada) · **Contact:** sales@synapserun.dev
 
 This document describes the **commercial dual-licensing option** for organizations that need to use Synapse Cell's Pro or Hub features without complying with the AGPL v3 distribution requirements.
 
@@ -45,7 +45,7 @@ Final pricing is set by a signed agreement, but indicative ranges (CAD):
 | Tier | What's included | Price band |
 |------|-----------------|------------|
 | **Cell Pro Commercial** | AGPL opt-out for Pro FFIs (`load_weights`, `host_fetch`, `host_fs_*`, `host_mcp_call`, GPU ops); per-node deployment; standard email support | **$12,000–24,000 / year per organization** (volume discounts available) |
-| **Synapse Hub Commercial** | AGPL opt-out for Hub fleet dashboard, cryptographic receipts UI, Atlantic Handshake federation, RBAC, license server; SLA; quarterly business review; air-gap deployment support | **$50,000–250,000 / year** depending on scale, sector, and SLA tier |
+| **Synapse Hub Commercial** | AGPL opt-out for Hub fleet dashboard, cryptographic receipts UI, fleet federation, RBAC, license server; SLA; quarterly business review; air-gap deployment support | **$50,000–250,000 / year** depending on scale, sector, and SLA tier |
 | **Cell Custom Engineering** | Custom FFI development, sector-specific compliance work (OSFI E-23, EU AI Act, HIPAA), security audits, integration consulting | Time-and-materials at **$300–500 CAD / hour**, or fixed-bid by scope |
 
 These ranges deliberately overlap with what enterprise software vendors charge for comparable products (GitLab EE, Mattermost Enterprise, Sourcegraph Cloud). We are not a discount play — Cell's price reflects its compliance-grade differentiators (sovereign jurisdiction, cryptographic receipts, AGPL-protected commons, audit-grade trust registry membership).
@@ -56,7 +56,7 @@ These ranges deliberately overlap with what enterprise software vendors charge f
 
 To keep faith with the [Sovereign Compute Manifesto](MANIFESTO.md):
 
-- We **will not** license Cell to fossil fuel majors (oil and gas exploration / production), surveillance-state intelligence agencies, weapons manufacturers, or organizations subject to enforced sanctions for human-rights violations under the UN framework. This is an editorial policy of Freshfield AI Inc., not an AGPL clause — see the [Tiered Trust Registry exclusion list](docs/2026-04-15-cell-commercial-setup-plan.md) for the full reasoning.
+- We **will not** license Cell to fossil-fuel majors (oil and gas exploration / production), surveillance-state intelligence agencies, weapons manufacturers, or organizations subject to enforced sanctions for human-rights violations under the UN framework. This is a project editorial policy, not an AGPL clause; the AGPL itself does not restrict who may use the software.
 - We **will not** issue silent patches for security vulnerabilities, NDA security researchers, or delay public disclosure beyond the [SECURITY.md](SECURITY.md) timelines for marketing reasons.
 - We **will not** introduce vendor lock-in through proprietary file formats, undocumented APIs, or closed protocols. Customer data is always portable.
 - We **will not** charge individuals, non-profits, or academic users to access Cell. AGPL v3 grants those rights freely; a commercial license is opt-in for organizations that need it.
@@ -78,7 +78,7 @@ Typical time from first email to license issued: **1–4 weeks**, depending on l
 
 Synapse Cell is open source (Apache 2.0 Core, AGPL v3 Pro/Hub) because [our manifesto](MANIFESTO.md) commits us to "compute for the commons" and rejects "the privatization of human knowledge." We genuinely want individuals, non-profits, and self-hosting organizations to use Cell freely, forever.
 
-The commercial license exists because Freshfield AI Inc. is bootstrapped, solo-founder, and needs revenue to keep developing the commons. The asymmetry is deliberate: **community gets the software for free; organizations that want to extract value without contributing back pay for the privilege**. This is the same model used by Plausible Analytics, Mattermost, Matomo, MariaDB Enterprise, and others.
+The commercial license exists because the project is bootstrapped and needs revenue to keep developing the commons. The asymmetry is deliberate: **the community gets the software for free; organizations that want to ship Cell inside closed-source products pay for that right**. This is the same model used by Plausible Analytics, Mattermost, Matomo, MariaDB Enterprise, and others.
 
 If you find this approach reasonable, **buying a commercial license is the most direct way to support continued development of the open-source commons**. Thank you.
 

@@ -1,6 +1,6 @@
 # The Sovereign Compute Manifesto — Cell edition
 
-Synapse Cell exists because of a set of values, not the other way around. Every decision we make — what we license, who we sell to, how we price, what we refuse — is downstream of **The Sovereign Compute Manifesto**, a values document maintained by Freshfield AI Inc.
+Synapse Cell exists because of a set of values, not the other way around. Every decision we make — what we license, who we sell to, how we price, what we refuse — is downstream of **The Sovereign Compute Manifesto**, a values document maintained by Mike Mazur.
 
 This file captures the values that drive Cell specifically — what we'll license, who we'll sell to, what we'll refuse — so anyone landing here can see them without external lookups.
 
@@ -20,13 +20,13 @@ These aren't slogans. They drive concrete decisions:
 
 | Decision | Driven by |
 |----------|-----------|
-| Cell is **AGPL v3** (not BSL or Elastic License) | "Compute for the commons" — billionaires must contribute back or pay |
+| Cell is **AGPL v3** (not BSL or Elastic License) | "Compute for the commons" — corporate users must contribute changes back or pay for a commercial license |
 | EdgeCell tier is **free, forever, with no usage cap on self-host** | "AI must be a ubiquitous free public utility" |
 | Trust-registry exclusion list explicitly bans fossil-fuel majors and surveillance-state contractors | "Ecological destruction" + UN Universal Declaration of Human Rights |
 | Cryptographic receipt fingerprinting (compiler hash + license id in every receipt) | "Physics and mathematics cannot be copyrighted" — the moat is verification, not gatekeeping |
 | Server placement in Hetzner Helsinki + Hetzner Ashburn (NOT US-only AWS) | "Sovereign compute" — Canadian / EU jurisdiction, no US CLOUD Act exposure |
-| Native `.syn` Wasm execution (NOT PyTorch / CUDA) | Direct rejection of Microsoft/Nvidia/cloud monopoly stack |
-| Bootstrapped, no VC | "Reject the privatization of human knowledge" — VCs would pressure rent-extraction |
+| Native `.syn` Wasm execution (NOT PyTorch / CUDA) | Independent of the Microsoft/Nvidia/cloud-vendor toolchain |
+| Bootstrapped to date | "Reject the privatization of human knowledge" — investor pressure would shift incentives toward rent-extraction |
 
 If you're asked to make a change to Cell that contradicts these driving principles, **escalate before doing it**. The manifesto outranks any individual ticket or feature request.
 
@@ -56,7 +56,7 @@ This filter keeps us honest as we scale.
 
 ## What we refuse, explicitly
 
-From the Sovereign Compute Manifesto and the Synapse research arm's "What We Refuse" list:
+From the Sovereign Compute Manifesto and Cell's "What We Refuse" list:
 
 - **No PyTorch in production.** Research and quantization only. The serving path is Rust → WGSL → Wasm.
 - **No CUDA.** We use WGSL (WebGPU). Runs on Metal, Vulkan, and browsers. No NVIDIA lock-in.
@@ -91,7 +91,7 @@ The trust registry (forthcoming) and [commercial license](COMMERCIAL_LICENSE.md)
 - **Weapons manufacturers** (excluded from compliance-grade trust registry; can still run AGPL Cell, just not earn certified trust badge)
 - **Entities under enforced sanctions** for human-rights violations under the UN framework
 
-These exclusions are NOT AGPL clauses (AGPL doesn't restrict use by users, only by distributors/SaaS-hosts). They're **editorial choices** by Freshfield AI Inc. about who we contract with, who we register, and who we lend our brand to. We make this distinction explicit because we want to be honest about what kind of company we are.
+These exclusions are NOT AGPL clauses (AGPL doesn't restrict use by users, only by distributors/SaaS-hosts). They're **editorial choices** by Mike Mazur about who we contract with, who we register, and who we lend our brand to. We make this distinction explicit because we want to be honest about what kind of company we are.
 
 ---
 
