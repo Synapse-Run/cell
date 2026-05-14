@@ -1,0 +1,17 @@
+name: "Synapse Cell CodeQL config"
+
+# Skip third-party / vendored code from analysis.
+# - sdk/synapse/_templates/ ships bundled CPython 3.12 stdlib for the local Wasm runtime
+# - templates/packages/ ships pre-built pip packages (numpy, requests, tqdm) for the data-science template
+paths-ignore:
+  - "sdk/synapse/_templates/**"
+  - "templates/packages/**"
+  - "command-center/node_modules/**"
+  - "sdk/js/node_modules/**"
+  - "**/.venv/**"
+  - "**/dist/**"
+  - "**/build/**"
+
+# Standard security + quality queries
+queries:
+  - uses: security-and-quality

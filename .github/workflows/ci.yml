@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -58,7 +58,9 @@ jobs:
       - name: Install ruff
         run: pip install ruff
       - name: Lint Python SDK
-        run: ruff check sdk/synapse/
+        # cd into sdk so ruff finds sdk/pyproject.toml [tool.ruff] config,
+        # which excludes vendored CPython under synapse/_templates/.
+        run: cd sdk && ruff check synapse/
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt

@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://pypi.org/project/synapserun/"><img src="https://img.shields.io/pypi/v/synapserun" alt="PyPI"></a>
   <a href="https://www.npmjs.com/package/@runsynapse/sdk"><img src="https://img.shields.io/npm/v/@runsynapse/sdk" alt="npm"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License: AGPL-3.0"></a>
 </p>
 

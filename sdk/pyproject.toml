@@ -7,7 +7,7 @@ name = "synapserun"
 version = "0.5.2"
 description = "Synapse Cell SDK — E2B-compatible sandboxed code execution, 200x faster, with streaming, filesystem, git, PTY, Dockerfile transpilation, and bundled Wasm runtimes."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "AGPL-3.0-or-later"
 authors = [
     {name = "Mike Mazur", email = "hello@synapserun.dev"},
@@ -16,7 +16,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -53,6 +52,8 @@ all = [
 [project.urls]
 Homepage = "https://synapserun.dev"
 Documentation = "https://synapserun.dev/docs"
+Source = "https://github.com/Synapse-Run/cell"
+"Bug Tracker" = "https://github.com/Synapse-Run/cell/issues"
 "Support" = "https://synapserun.dev"
 
 [project.scripts]
@@ -72,4 +73,24 @@ exclude = ["js*"]
     "_templates/lib/python312.zip",
     "_templates/lib/python3.12/**",
     "syn_few_shot.json",
+]
+
+[tool.ruff]
+# Lint our own code; skip vendored / bundled third-party trees.
+extend-exclude = [
+    "synapse/_templates",
+    "tests/__pycache__",
+    "build",
+    "dist",
+]
+line-length = 120
+
+[tool.ruff.lint]
+# Default Pyflakes (F) + pycodestyle errors (E). Skip style (W) for now.
+select = ["E", "F"]
+ignore = [
+    "E501",  # Line too long — keep until we add a formatter pass
+    "E402",  # Module-level imports not at top — common in conditional imports
+    "E722",  # Bare `except:` — acceptable in test teardown
+    "E741",  # Ambiguous variable names — often "l" for list intentionally
 ]

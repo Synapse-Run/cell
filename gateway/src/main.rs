@@ -1518,8 +1518,13 @@ fn run_worker(
 }
 
 /// Embedded gateway.wasm — compiled into the binary at build time.
-/// TODO: the actual payload should be generated or provided via a proper release process
-static EMBEDDED_GATEWAY_WASM: &[u8] = include_bytes!("../../../gateway.wasm");
+///
+/// In the public OSS repo, `gateway/gateway.wasm` is an 8-byte stub (just the
+/// Wasm magic header `\0asm\1\0\0\0`). The stub lets the binary build cleanly
+/// without the private `.syn`-compiled artifact. At runtime, provide a real
+/// gateway.wasm via the `SYNAPSE_GATEWAY_WASM` env var or as the first CLI arg
+/// (see fn main below).
+static EMBEDDED_GATEWAY_WASM: &[u8] = include_bytes!("../gateway.wasm");
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wasm_override = std::env::args().nth(1)
