@@ -17,7 +17,7 @@ python-ext = ["pyo3"]
 # wheel runs on 3.8 through 3.14+. Avoids per-Python-version rebuilds and
 # unblocks installation on systems where the default `python3` is newer than
 # pyo3 0.21.2's nominal maximum (3.12).
-pyo3 = { version = "0.21.2", features = ["extension-module", "abi3-py38"], optional = true }
+pyo3 = { version = "0.28.3", features = ["extension-module", "abi3-py38"], optional = true }
 # wasmtime + wasmtime-wasi: bumped from "18" to "43" on 2026-04-15.
 # Aligns Cell gateway with the documented production runtime (synapse/CLAUDE.md
 # says "Rust + wasmtime 43 on Linux"). Code in cell.rs already uses the v22+
