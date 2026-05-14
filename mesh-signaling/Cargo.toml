@@ -1,0 +1,20 @@
+[package]
+name = "mesh-signaling"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "WebSocket signaling server for Atlantic Handshake WebRTC mesh. Pairs with cell/sdk/js/mesh_sharding.js and consume/synapse-wasm/index.html."
+
+[[bin]]
+name = "mesh-signaling-server"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "signal"] }
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

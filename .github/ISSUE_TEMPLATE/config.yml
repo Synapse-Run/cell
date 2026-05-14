@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question / discussion
+    url: https://github.com/Synapse-Run/cell/discussions
+    about: Open-ended questions, "how do I...", or design discussions go in Discussions, not Issues.
+  - name: Security vulnerability
+    url: https://github.com/Synapse-Run/cell/security/advisories/new
+    about: Do NOT file public issues for security bugs. Use private vulnerability reporting.
+  - name: Commercial / sales
+    url: https://synapserun.dev
+    about: For commercial-license, enterprise pilot, or sales questions, email sales@synapserun.dev.

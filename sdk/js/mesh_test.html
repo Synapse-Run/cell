@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Atlantic Shared Compute Mesh Node</title>
+    <style>
+        body { font-family: monospace; background: #0f172a; color: #10b981; padding: 20px; }
+        #log { white-space: pre-wrap; margin-top: 20px; padding: 10px; background: #1e293b; border-radius: 4px; border: 1px solid #334155; height: 60vh; overflow-y: scroll; }
+        button { background: #10b981; color: #0f172a; border: none; padding: 10px 20px; cursor: pointer; font-family: monospace; font-weight: bold; border-radius: 4px; }
+        button:hover { background: #34d399; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+    {
+      "imports": {
+        "fs": "./dummy.js?v=2",
+        "path": "./dummy.js?v=2",
+        "crypto": "./dummy.js?v=2"
+      }
+    }
+    </script>
+    <h2>🌊 Atlantic Handshake V2 — Mesh Node</h2>
+    <div>
+        <button id="btnJoin">1. Join Mesh</button>
+        <button id="btnSimulate" disabled>2. Simulate Token Arrival</button>
+    </div>
+    
+    <div id="log"></div>
+    
+    <script>
+        // Provide global Node.js shims for browser execution of shared SDK
+        window.process = { env: {} };
+        window.__dirname = '/';
+        window.require = function(mod) {
+            console.log("Mock require called for:", mod);
+            return {};
+        };
+        window.exports = {};
+        window.module = { exports: {} };
+    </script>
+    
+    <script type="module">
+        import { EdgeCell } from './cell.js';
+        
+        function logMsg(msg) {
+            const el = document.getElementById('log');
+            el.innerHTML += msg + '\n';
+            el.scrollTop = el.scrollHeight;
+            console.log(msg); // Let playwright capture it
+        }
+        
+        // Removed console.log interception so we don't recurse
+        
+        const cell = new EdgeCell();
+        let tokenCount = 0;
+        
+        document.getElementById('btnJoin').onclick = async () => {
+            document.getElementById('btnJoin').disabled = true;
+            logMsg("Joining mesh coordinator at ws://127.0.0.1:8012...");
+            try {
+                await cell.initMesh("http://127.0.0.1:8012");
+                logMsg("✅ Mesh joined and initialized!");
+                document.getElementById('btnSimulate').disabled = false;
+            } catch (e) {
+                logMsg("❌ Error: " + e.message);
+                document.getElementById('btnJoin').disabled = false;
+            }
+        };
+        
+        document.getElementById('btnSimulate').onclick = async () => {
+            logMsg("Simulating incoming state vector...");
+            // Simulate 64-dim Float32Array (match MOCK_HIDDEN_SIZE)
+            const state = new Float32Array(64).fill(0.123);
+            tokenCount++;
+            
+            try {
+                // Manually trigger inferLayer as if we received it over WebRTC
+                const assignment = cell.meshAssignment;
+                if (!assignment) throw new Error("No assignment");
+                
+                const output = await cell.inferLayer(tokenCount, state, assignment.layerStart, assignment.layerEnd);
+                logMsg(`✅ InferLayer complete for token ${tokenCount}. Routing to Experts: ${output.topKExperts.join(', ')}`);
+                
+                logMsg(`⏳ Waiting for WebRTC peer accumulation...`);
+                const finalState = await cell.accumulateExperts(tokenCount, output.state, output.topKExperts);
+                logMsg(`✅ State successfully accumulated from peers! Proceeding to next layer.`);
+            } catch (e) {
+                logMsg("❌ Error: " + e.message);
+            }
+        };
+    </script>
+</body>
+</html>

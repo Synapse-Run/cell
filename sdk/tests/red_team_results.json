@@ -1,0 +1,81 @@
+{
+  "passed": 15,
+  "total": 15,
+  "results": [
+    {
+      "name": "1. Auth bypass \u2014 no API key",
+      "category": "SECURITY",
+      "status": "PASS"
+    },
+    {
+      "name": "2. Auth bypass \u2014 header manipulation",
+      "category": "SECURITY",
+      "status": "PASS"
+    },
+    {
+      "name": "3. Path traversal in file ops",
+      "category": "SECURITY",
+      "status": "PASS"
+    },
+    {
+      "name": "4. Body size limits",
+      "category": "SECURITY",
+      "status": "PASS"
+    },
+    {
+      "name": "5. Rapid-fire DoS resistance",
+      "category": "SECURITY",
+      "status": "PASS"
+    },
+    {
+      "name": "6. WASI boundary \u2014 os/subprocess/socket",
+      "category": "SANDBOX",
+      "status": "PASS"
+    },
+    {
+      "name": "7. File escape via sandbox paths",
+      "category": "SANDBOX",
+      "status": "PASS"
+    },
+    {
+      "name": "8. Information leakage",
+      "category": "SANDBOX",
+      "status": "PASS"
+    },
+    {
+      "name": "9. Resource exhaustion",
+      "category": "SANDBOX",
+      "status": "PASS"
+    },
+    {
+      "name": "10. Code injection via cell_id",
+      "category": "SANDBOX",
+      "status": "PASS"
+    },
+    {
+      "name": "11. Keep-alive connection exhaustion",
+      "category": "CORRECTNESS",
+      "status": "PASS"
+    },
+    {
+      "name": "12. Malformed JSON handling",
+      "category": "CORRECTNESS",
+      "status": "PASS"
+    },
+    {
+      "name": "13. Cross-cell data isolation",
+      "category": "CORRECTNESS",
+      "status": "PASS"
+    },
+    {
+      "name": "14. Receipt uniqueness and correctness",
+      "category": "INTEGRITY",
+      "status": "PASS"
+    },
+    {
+      "name": "15. Receipt result hash integrity",
+      "category": "INTEGRITY",
+      "status": "PASS"
+    }
+  ]
+}

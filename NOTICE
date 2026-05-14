@@ -1,0 +1,115 @@
+Synapse Cell
+Copyright 2026 Freshfield AI Inc.
+
+This product includes software developed at Freshfield AI Inc. (https://synapserun.dev/).
+
+Licensing: see LICENSE (Apache 2.0 for Core), LICENSE-AGPL.md (AGPL v3 for
+Pro and Hub), and COMMERCIAL_LICENSE.md (commercial dual-license option).
+
+================================================================================
+THIRD-PARTY ATTRIBUTIONS
+================================================================================
+
+This software depends on the following third-party components. Each retains
+its original copyright and license. See the respective project source for the
+full license text.
+
+--- Rust gateway dependencies (cell/gateway/Cargo.toml) ---
+
+  pyo3 (Python bindings for Rust)
+    Copyright (c) 2017-present PyO3 Project and Contributors
+    License: Apache-2.0 OR MIT
+    https://github.com/PyO3/pyo3
+
+  wasmtime (WebAssembly runtime)
+    Copyright (c) Bytecode Alliance
+    License: Apache-2.0 WITH LLVM-exception
+    https://github.com/bytecodealliance/wasmtime
+
+  wasmtime-wasi (WASI implementation for wasmtime)
+    Copyright (c) Bytecode Alliance
+    License: Apache-2.0 WITH LLVM-exception
+    https://github.com/bytecodealliance/wasmtime
+
+  sha2 (SHA-256 / SHA-512 implementation)
+    Copyright (c) RustCrypto Developers
+    License: MIT OR Apache-2.0
+    https://github.com/RustCrypto/hashes
+
+  rusqlite (SQLite bindings for Rust)
+    Copyright (c) The rusqlite Developers
+    License: MIT
+    https://github.com/rusqlite/rusqlite
+
+  serde (Serialization framework)
+    Copyright (c) Erick Tryzelaar and David Tolnay
+    License: MIT OR Apache-2.0
+    https://github.com/serde-rs/serde
+
+  serde_json (JSON support for serde)
+    Copyright (c) Erick Tryzelaar and David Tolnay
+    License: MIT OR Apache-2.0
+    https://github.com/serde-rs/json
+
+  moka (Concurrent in-memory cache)
+    Copyright (c) Tatsuya Kawano
+    License: MIT OR Apache-2.0
+    https://github.com/moka-rs/moka
+
+  uuid (UUID generation)
+    Copyright (c) The Uuid Project Developers
+    License: Apache-2.0 OR MIT
+    https://github.com/uuid-rs/uuid
+
+  ureq (HTTP client)
+    Copyright (c) ureq contributors
+    License: MIT OR Apache-2.0
+    https://github.com/algesten/ureq
+
+  ndarray (N-dimensional array)
+    Copyright (c) ndarray contributors
+    License: MIT OR Apache-2.0
+    https://github.com/rust-ndarray/ndarray
+
+  tungstenite (WebSocket implementation)
+    Copyright (c) Alexey Galakhov
+    License: MIT OR Apache-2.0
+    https://github.com/snapview/tungstenite-rs
+
+--- Python SDK dependencies (cell/sdk/pyproject.toml) ---
+
+  Standard library (stdlib only — no third-party deps required for the
+  core SDK).  Optional integrations (langchain, crewai) carry their
+  own licenses; users opting into those integrations are responsible
+  for compliance with their respective terms.
+
+--- TypeScript / JS SDK dependencies (cell/sdk/js/package.json) ---
+
+  See cell/sdk/js/package.json for the dependency list and their
+  individual licenses (typically MIT or Apache-2.0).
+
+--- Command Center dashboard (cell/command-center/package.json) ---
+
+  Vite, React, TypeScript, and supporting tooling.
+  Each dependency retains its original license.  See
+  cell/command-center/package.json and the corresponding
+  node_modules/<package>/LICENSE files.
+
+================================================================================
+TRADEMARK NOTICE
+================================================================================
+
+"Synapse Cell," "EdgeCell," "Synapse Hub," and the Synapse logo are
+trademarks of Freshfield AI Inc.  Use of these names and marks is
+governed by TRADEMARK.md.  Source-code licenses (Apache-2.0, AGPL v3)
+do not grant trademark rights.
+
+================================================================================
+CONTACT
+================================================================================
+
+  General:    hello@synapserun.dev
+  Sales:      sales@synapserun.dev
+  Security:   security@synapserun.dev
+  Trademark:  trademark@synapserun.dev
+  Issues:     https://github.com/Synapse-Run/cell/issues

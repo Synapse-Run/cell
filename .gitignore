@@ -1,0 +1,52 @@
+# Rust
+target/
+**/*.rs.bk
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.venv-*/
+dist/
+build/
+.eggs/
+
+# Node / TypeScript
+node_modules/
+.next/
+out/
+.vite/
+*.tsbuildinfo
+.npm/
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Secrets — defense in depth (push protection should also catch these)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*-private.json
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Local-only artifacts
+*.local
+benchmarks/RESULTS-local-*.jsonl
+benchmarks/*.local.jsonl
+
+# Re-include Cargo.lock for the gateway binary (apps commit lock files)
+!gateway/Cargo.lock

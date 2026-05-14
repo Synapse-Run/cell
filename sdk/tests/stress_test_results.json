@@ -1,0 +1,131 @@
+{
+  "timestamp": 1775779096.535059,
+  "mode": "quick",
+  "target": "https://cell.synapserun.dev",
+  "duration_s": 100.21247696876526,
+  "passed": 12,
+  "failed": 0,
+  "tests": [
+    {
+      "name": "1. Concurrent Cell Creation (50 cells)",
+      "passed": true,
+      "duration_ms": 1387.8028392791748,
+      "details": "50/50 cells created & executed (100%)",
+      "metrics": {
+        "created": 50,
+        "errors": 0,
+        "success_rate": 100.0
+      }
+    },
+    {
+      "name": "2. Sustained Throughput",
+      "passed": true,
+      "duration_ms": 11104.77614402771,
+      "details": "52 execs in 10s = 5.0 exec/s, p50=1ms p95=1ms p99=1ms",
+      "metrics": {
+        "total_execs": 52,
+        "throughput": 5.02036187315109,
+        "p50": 0.9826845,
+        "p95": 1.1606889999999999,
+        "p99": 1.397069,
+        "errors": 0
+      }
+    },
+    {
+      "name": "3. Memory Pressure",
+      "passed": true,
+      "duration_ms": 1980.525016784668,
+      "details": "1MB strings, 100K lists, 10K dicts, nested structures \u2014 all OK",
+      "metrics": {}
+    },
+    {
+      "name": "4. Complex Code Patterns",
+      "passed": true,
+      "duration_ms": 3923.5622882843018,
+      "details": "Classes, generators, closures, lambdas, exceptions \u2014 all OK",
+      "metrics": {}
+    },
+    {
+      "name": "5. Persistent Session Marathon (100 steps)",
+      "passed": true,
+      "duration_ms": 38830.53803443909,
+      "details": "100 steps, state verified, p50=182ms p99=220ms",
+      "metrics": {
+        "steps": 100,
+        "p50": 181.8869775,
+        "p99": 219.607559,
+        "latencies": [
+          182.513961,
+          183.918264,
+          183.36440000000002,
+          185.570929,
+          183.201169
+        ]
+      }
+    },
+    {
+      "name": "6. File I/O Stress",
+      "passed": true,
+      "duration_ms": 2129.98104095459,
+      "details": "50 files + 500KB large file + JSON round-trip \u2014 all OK",
+      "metrics": {}
+    },
+    {
+      "name": "7. Shell Command Barrage",
+      "passed": true,
+      "duration_ms": 3450.9658813476562,
+      "details": "7/7 shell commands passed",
+      "metrics": {
+        "passed": 7
+      }
+    },
+    {
+      "name": "8. SSE Streaming",
+      "passed": true,
+      "duration_ms": 1657.4208736419678,
+      "details": "20 lines streamed in order, result event received",
+      "metrics": {
+        "events": 21
+      }
+    },
+    {
+      "name": "9. Error Handling",
+      "passed": true,
+      "duration_ms": 8526.142835617065,
+      "details": "7/7 error handling tests passed",
+      "metrics": {
+        "passed": 7
+      }
+    },
+    {
+      "name": "10. Mixed Workload Chaos",
+      "passed": true,
+      "duration_ms": 4302.8318881988525,
+      "details": "20/20 workers completed (100%), 0 errors",
+      "metrics": {
+        "completed": 20,
+        "errors": 0
+      }
+    },
+    {
+      "name": "11. Rapid Lifecycle (30 cycles)",
+      "passed": true,
+      "duration_ms": 17983.725786209106,
+      "details": "15 create\u2192exec\u2192kill cycles, p50=1141ms/cycle",
+      "metrics": {
+        "cycles": 15,
+        "p50": 1141.3288116455078
+      }
+    },
+    {
+      "name": "12. Concurrent Persistent Sessions",
+      "passed": true,
+      "duration_ms": 4933.227062225342,
+      "details": "10/10 concurrent persistent sessions, each 10 steps with verified state",
+      "metrics": {
+        "success": 10,
+        "errors": 0
+      }
+    }
+  ]
+}

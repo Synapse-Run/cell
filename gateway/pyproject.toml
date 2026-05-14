@@ -1,0 +1,43 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "synapse-cell"
+version = "0.2.0"
+description = "Synapse Cell Wasm sandbox execution kernel (PyO3 backend for synapserun)"
+readme = "README-pypi.md"
+requires-python = ">=3.8"
+license = "AGPL-3.0-or-later"
+authors = [
+    {name = "Freshfield AI", email = "hello@synapserun.dev"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: System :: Emulators",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+]
+
+[project.urls]
+Homepage = "https://synapserun.dev"
+Repository = "https://github.com/Synapse-Run/cell"
+"Bug Tracker" = "https://github.com/Synapse-Run/cell/issues"
+
+[tool.maturin]
+features = ["pyo3/extension-module", "python-ext"]
+module-name = "synapse_rust_core"
+# abi3 gives us one wheel per platform that works on Python 3.8+
+# — massively simpler than per-minor-version wheels.

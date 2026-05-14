@@ -1,0 +1,17 @@
+# Synapse Cell — CODEOWNERS
+#
+# Default reviewer for every change. As maintainers join, add subtree owners.
+
+*                                   @freshfield-life
+/gateway/                           @freshfield-life
+/sdk/                               @freshfield-life
+/sdk/js/                            @freshfield-life
+/command-center/                    @freshfield-life
+/benchmarks/                        @freshfield-life
+/.github/                           @freshfield-life
+/SECURITY.md                        @freshfield-life
+/LICENSE                            @freshfield-life
+/LICENSE-AGPL.md                    @freshfield-life
+/COMMERCIAL_LICENSE.md              @freshfield-life
+/TRADEMARK.md                       @freshfield-life
+/MANIFESTO.md                       @freshfield-life

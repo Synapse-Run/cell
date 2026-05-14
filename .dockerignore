@@ -1,0 +1,16 @@
+target/
+node_modules/
+dist/
+*.whl
+*.tar.gz
+*.egg-info
+__pycache__
+.git
+.github
+docs/
+benchmarks/
+journals/
+grants/
+*.md
+!README.md
+.DS_Store

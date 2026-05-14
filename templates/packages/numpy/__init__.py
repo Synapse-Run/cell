@@ -1,0 +1,1 @@
+raise ImportError("'numpy' requires C extensions that are not yet compiled for Wasm. Use the pure-Python alternative or request this package be added to the Synapse Cell Wasm package registry.")

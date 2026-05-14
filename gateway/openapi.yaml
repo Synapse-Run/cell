@@ -1,0 +1,748 @@
+openapi: '3.1.0'
+info:
+  title: Synapse Cell Gateway API
+  version: 0.5.2
+  description: |
+    Sovereign AI execution engine — bare-metal Wasm sandboxes for AI agents.
+    Up to 50× faster than E2B. Self-hosted. Cryptographically verifiable.
+  contact:
+    name: Freshfield AI
+    url: https://cell.synapserun.dev
+  license:
+    name: AGPL-3.0
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+
+servers:
+  - url: http://localhost:8002
+    description: Local development gateway
+  - url: https://api.synapserun.dev
+    description: Production gateway
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    CellResult:
+      type: object
+      properties:
+        stdout: { type: string }
+        stderr: { type: string }
+        exit_code: { type: integer }
+        result: { type: string }
+        latency_ms: { type: number, format: double }
+
+    CellInfo:
+      type: object
+      properties:
+        cell_id: { type: string }
+        status: { type: string, enum: [running, paused, killed] }
+        template: { type: string }
+        persistent: { type: boolean }
+        created_at: { type: string }
+        metadata: { type: object }
+        envs: { type: object }
+
+    FileEntry:
+      type: object
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [file, directory] }
+        path: { type: string }
+        size: { type: integer }
+        mode: { type: string }
+        modified_time: { type: string }
+
+    ProcessInfo:
+      type: object
+      properties:
+        id: { type: string }
+        command: { type: string }
+        status: { type: string }
+        exit_code: { type: integer }
+
+    TemplateInfo:
+      type: object
+      properties:
+        name: { type: string }
+        runtime: { type: string }
+        description: { type: string }
+        packages: { type: array, items: { type: string } }
+
+    VolumeInfo:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        created_at: { type: string }
+
+    HealthResponse:
+      type: object
+      properties:
+        status: { type: string }
+        service: { type: string }
+        version: { type: string }
+
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+paths:
+  # ─── Health ────────────────────────────────────────────────
+  /v1/health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Gateway is healthy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthResponse' }
+
+  /v1/stats:
+    get:
+      summary: Gateway statistics
+      operationId: getStats
+      responses:
+        '200':
+          description: Aggregate stats (cells created, executed, active)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_cells_created: { type: integer }
+                  total_executions: { type: integer }
+                  active_cells: { type: integer }
+
+  /v1/metrics:
+    get:
+      summary: Prometheus-compatible metrics
+      operationId: getMetrics
+      responses:
+        '200':
+          description: Prometheus text format metrics
+          content:
+            text/plain:
+              schema: { type: string }
+
+  # ─── Cell Lifecycle ────────────────────────────────────────
+  /v1/cells:
+    post:
+      summary: Create a new sandbox
+      operationId: createCell
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                template: { type: string, default: python3 }
+                persistent: { type: boolean, default: false }
+                timeout_ms: { type: integer, default: 3600000 }
+                metadata: { type: object }
+                envs: { type: object }
+      responses:
+        '200':
+          description: Cell created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CellInfo' }
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    get:
+      summary: List active sandboxes
+      operationId: listCells
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: state
+          in: query
+          schema: { type: string, default: 'running,paused' }
+      responses:
+        '200':
+          description: List of cells
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CellInfo' }
+
+  /v1/cells/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+
+    get:
+      summary: Get sandbox info
+      operationId: getCell
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CellInfo' }
+        '404':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+    delete:
+      summary: Kill (destroy) a sandbox
+      operationId: killCell
+      responses:
+        '200':
+          description: Cell killed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+
+    patch:
+      summary: Update sandbox metadata
+      operationId: patchCell
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metadata: { type: object }
+                timeout_ms: { type: integer }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CellInfo' }
+
+  # ─── Code Execution ───────────────────────────────────────
+  /v1/cells/{id}/exec:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Execute code in sandbox
+      operationId: execCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+                language: { type: string, default: python3 }
+      responses:
+        '200':
+          description: Execution result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CellResult' }
+
+  /v1/cells/{id}/exec/stream:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Execute code with SSE streaming
+      operationId: execCodeStream
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+                language: { type: string }
+      responses:
+        '200':
+          description: Server-Sent Events stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+  /v1/cells/{id}/cmd:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Run shell command
+      operationId: runCommand
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [command]
+              properties:
+                command: { type: string }
+                background: { type: boolean, default: false }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CellResult' }
+
+  # ─── Filesystem ────────────────────────────────────────────
+  /v1/cells/{id}/files:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Write a file
+      operationId: writeFile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                path: { type: string }
+                content: { type: string }
+      responses:
+        '200':
+          description: File written
+
+    get:
+      summary: Read a file
+      operationId: readFile
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  content: { type: string }
+
+    delete:
+      summary: Remove a file or directory
+      operationId: removeFile
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: File removed
+
+  /v1/cells/{id}/files/list:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: List directory contents
+      operationId: listFiles
+      parameters:
+        - name: path
+          in: query
+          schema: { type: string, default: '/' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/FileEntry' }
+
+  /v1/cells/{id}/files/exists:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: Check if path exists
+      operationId: fileExists
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exists: { type: boolean }
+
+  /v1/cells/{id}/files/info:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: Get file/directory metadata
+      operationId: fileInfo
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FileEntry' }
+
+  /v1/cells/{id}/files/mkdir:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Create directory
+      operationId: makeDir
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                path: { type: string }
+      responses:
+        '200':
+          description: Directory created
+
+  /v1/cells/{id}/files/rename:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Rename/move file
+      operationId: renameFile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                old_path: { type: string }
+                new_path: { type: string }
+      responses:
+        '200':
+          description: File renamed
+
+  # ─── Pause / Resume / Snapshots ────────────────────────────
+  /v1/cells/{id}/pause:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Pause cell and create snapshot
+      operationId: pauseCell
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  snapshot_id: { type: string }
+
+  /v1/cells/{id}/resume:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Resume a paused cell
+      operationId: resumeCell
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+
+  /v1/cells/{id}/snapshot:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Create snapshot without pausing
+      operationId: createSnapshot
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshot_id: { type: string }
+
+  /v1/cells/{id}/snapshots:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: List snapshots for cell
+      operationId: listSnapshots
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  # ─── Environment & Metadata ────────────────────────────────
+  /v1/cells/{id}/envs:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: Get environment variables
+      operationId: getEnvs
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { type: object }
+    patch:
+      summary: Merge environment variables
+      operationId: patchEnvs
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { type: object }
+
+  /v1/cells/{id}/metadata:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      summary: Merge metadata tags
+      operationId: patchMetadata
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { type: object }
+
+  /v1/cells/{id}/timeout:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Set inactivity timeout
+      operationId: setTimeout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                timeout_secs: { type: integer }
+      responses:
+        '200':
+          description: Timeout updated
+
+  /v1/cells/{id}/refresh:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Reset inactivity timer
+      operationId: refreshCell
+      responses:
+        '200':
+          description: Timer reset
+
+  # ─── Processes ─────────────────────────────────────────────
+  /v1/cells/{id}/processes:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: Start a background process
+      operationId: startProcess
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                command: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcessInfo' }
+    get:
+      summary: List background processes
+      operationId: listProcesses
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProcessInfo' }
+
+  # ─── Templates ─────────────────────────────────────────────
+  /v1/templates:
+    get:
+      summary: List templates
+      operationId: listTemplates
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TemplateInfo' }
+    post:
+      summary: Create a template
+      operationId: createTemplate
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TemplateInfo' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TemplateInfo' }
+
+  # ─── Volumes ───────────────────────────────────────────────
+  /v1/volumes:
+    get:
+      summary: List volumes
+      operationId: listVolumes
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/VolumeInfo' }
+    post:
+      summary: Create a volume
+      operationId: createVolume
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VolumeInfo' }
+
+  /v1/volumes/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      summary: Delete a volume
+      operationId: deleteVolume
+      responses:
+        '200':
+          description: Volume deleted
+
+  # ─── Fetch Proxy ───────────────────────────────────────────
+  /v1/cells/{id}/fetch:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      summary: HTTP proxy fetch via sandbox
+      operationId: fetchProxy
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url: { type: string }
+                method: { type: string, default: GET }
+                headers: { type: object }
+                body: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: integer }
+                  body: { type: string }
+                  headers: { type: object }

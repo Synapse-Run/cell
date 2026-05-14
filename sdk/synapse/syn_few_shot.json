@@ -1,0 +1,102 @@
+[
+  {
+    "task": "Return the sum of 21 and 21",
+    "syn": "@f 0 main\n  [ + 21 21 ]",
+    "expected": 42
+  },
+  {
+    "task": "Compute 6 factorial (720)",
+    "syn": "@f 0 main\n  [\n    let n 6\n    let result 1\n    while > n 1\n      [\n        set result * result n\n        set n - n 1\n      ]\n    result\n  ]",
+    "expected": 720
+  },
+  {
+    "task": "Calculate the 10th Fibonacci number",
+    "syn": "@f 0 main\n  [\n    let a 0\n    let b 1\n    let n 10\n    while > n 0\n      [\n        let temp + a b\n        set a b\n        set b temp\n        set n - n 1\n      ]\n    a\n  ]",
+    "expected": 55
+  },
+  {
+    "task": "Compute the sum of integers from 1 to 100",
+    "syn": "@f 0 main\n  [\n    let sum 0\n    let i 1\n    while <= i 100\n      [\n        set sum + sum i\n        set i + i 1\n      ]\n    sum\n  ]",
+    "expected": 5050
+  },
+  {
+    "task": "Return the absolute value of -42",
+    "syn": "@f 1 abs\n  [\n    if < $0 0\n      [ - 0 $0 ]\n      [ $0 ]\n  ]\n\n@f 0 main\n  [ call abs -42 ]",
+    "expected": 42
+  },
+  {
+    "task": "Check if 12321 is a palindrome (return 1 for true, 0 for false)",
+    "syn": "@f 0 main\n  [\n    let n 12321\n    let original n\n    let reversed 0\n    while > n 0\n      [\n        set reversed + * reversed 10 % n 10\n        set n / n 10\n      ]\n    if == reversed original\n      [ 1 ]\n      [ 0 ]\n  ]",
+    "expected": 1
+  },
+  {
+    "task": "Count the Collatz conjecture steps for n=27",
+    "syn": "@doc \"Count Collatz conjecture steps for n=27\"\n@schema main : () -> i64\n@f 0 main\n  [\n    let n 27\n    let steps 0\n    while > n 1\n      [\n        if == % n 2 0\n          [ set n / n 2 ]\n          [ set n + * 3 n 1 ]\n        set steps + steps 1\n      ]\n    steps\n  ]\n@assert == result 111",
+    "expected": 111
+  },
+  {
+    "task": "Find the 20th prime number by trial division",
+    "syn": "@f 0 main\n  [\n    let count 0\n    let candidate 2\n    let last_prime 0\n    while < count 20\n      [\n        let is_prime 1\n        let divisor 2\n        while <= * divisor divisor candidate\n          [\n            if == % candidate divisor 0\n              [ set is_prime 0 ]\n              [ 0 ]\n            set divisor + divisor 1\n          ]\n        if == is_prime 1\n          [\n            set count + count 1\n            set last_prime candidate\n          ]\n          [ 0 ]\n        set candidate + candidate 1\n      ]\n    last_prime\n  ]\n@assert == result 71",
+    "expected": 71
+  },
+  {
+    "task": "Sum of squares from 1 to 10",
+    "syn": "@f 0 main\n  [\n    let sum 0\n    let i 1\n    while <= i 10\n      [\n        set sum + sum * i i\n        set i + i 1\n      ]\n    sum\n  ]",
+    "expected": 385
+  },
+  {
+    "task": "Compute 2^10 (1024) using repeated multiplication",
+    "syn": "@f 0 main\n  [\n    let base 2\n    let exp 10\n    let result 1\n    while > exp 0\n      [\n        set result * result base\n        set exp - exp 1\n      ]\n    result\n  ]",
+    "expected": 1024
+  },
+  {
+    "task": "Write a function that doubles a number, and call it with 21",
+    "syn": "@f 1 double\n  [ * $0 2 ]\n\n@f 0 main\n  [ call double 21 ]",
+    "expected": 42
+  },
+  {
+    "task": "Compute GCD of 48 and 18 using Euclidean algorithm",
+    "syn": "@f 2 gcd\n  [\n    let a $0\n    let b $1\n    while != b 0\n      [\n        let temp % a b\n        set a b\n        set b temp\n      ]\n    a\n  ]\n\n@f 0 main\n  [ call gcd 48 18 ]",
+    "expected": 6
+  },
+  {
+    "task": "Project Euler #1: sum multiples of 3 or 5 below 1000",
+    "syn": "@f 0 main\n  [\n    let sum 0\n    let i 1\n    while < i 1000\n      [\n        let is_mult 0\n        if == % i 3 0\n          [ set is_mult 1 ]\n          [ 0 ]\n        if == % i 5 0\n          [ set is_mult 1 ]\n          [ 0 ]\n        if == is_mult 1\n          [ set sum + sum i ]\n          [ 0 ]\n        set i + i 1\n      ]\n    sum\n  ]\n@assert == result 233168",
+    "expected": 233168
+  },
+  {
+    "task": "Compute the digital root of 493193 (should be 2)",
+    "syn": "@f 0 main\n  [\n    let n 493193\n    while >= n 10\n      [\n        let digit_sum 0\n        let temp n\n        while > temp 0\n          [\n            set digit_sum + digit_sum % temp 10\n            set temp / temp 10\n          ]\n        set n digit_sum\n      ]\n    n\n  ]",
+    "expected": 2
+  },
+  {
+    "task": "Modular exponentiation: 3^13 mod 50",
+    "syn": "@f 3 mod_exp\n  [\n    let base $0\n    let exp $1\n    let modulus $2\n    let result 1\n    set base % base modulus\n    while > exp 0\n      [\n        if == % exp 2 1\n          [ set result % * result base modulus ]\n          [ 0 ]\n        set exp / exp 2\n        set base % * base base modulus\n      ]\n    result\n  ]\n\n@f 0 main\n  [ call mod_exp 3 13 50 ]",
+    "expected": 7
+  },
+  {
+    "task": "Allocate a 3-element f32 array and return the sum as i64",
+    "syn": "@f 0 main\n  [\n    let arr alloc 3\n    store arr 0 10.0\n    store arr 1 20.0\n    store arr 2 30.0\n    to_i64 + + load arr 0 load arr 1 load arr 2\n  ]",
+    "expected": 60
+  },
+  {
+    "task": "Dot product of [1,2,3] and [4,5,6]",
+    "syn": "@f 3 dot\n  [\n    let sum to_f32 0\n    let i 0\n    while < i $2\n      [\n        set sum + sum * load $0 i load $1 i\n        set i + i 1\n      ]\n    sum\n  ]\n\n@f 0 main\n  [\n    let a alloc 3\n    store a 0 1.0\n    store a 1 2.0\n    store a 2 3.0\n    let b alloc 3\n    store b 0 4.0\n    store b 1 5.0\n    store b 2 6.0\n    to_i64 call dot a b 3\n  ]",
+    "expected": 32
+  },
+  {
+    "task": "Compute LCM of 12 and 18",
+    "syn": "@f 2 gcd\n  [\n    let a $0\n    let b $1\n    while != b 0\n      [\n        let temp % a b\n        set a b\n        set b temp\n      ]\n    a\n  ]\n\n@f 0 main\n  [ / * 12 18 call gcd 12 18 ]",
+    "expected": 36
+  },
+  {
+    "task": "Count the number of 1-bits in the binary representation of 255",
+    "syn": "@f 0 main\n  [\n    let n 255\n    let count 0\n    while > n 0\n      [\n        set count + count & n 1\n        set n >> n 1\n      ]\n    count\n  ]",
+    "expected": 8
+  },
+  {
+    "task": "Compose two functions: double and add_ten. Compute double(add_ten(50))",
+    "syn": "@f 1 double\n  [ * $0 2 ]\n\n@f 1 add_ten\n  [ + $0 10 ]\n\n@f 0 main\n  [ call double call add_ten 50 ]",
+    "expected": 120
+  }
+]

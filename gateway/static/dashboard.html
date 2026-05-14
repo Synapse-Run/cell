@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard — Synapse Cell</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --surface2: #1a1a28;
+            --border: rgba(255,255,255,0.06);
+            --text: #e8e8ed;
+            --text2: #8888a0;
+            --accent: #6366f1;
+            --accent-glow: rgba(99,102,241,0.15);
+            --green: #22c55e;
+            --green-glow: rgba(34,197,94,0.15);
+            --amber: #f59e0b;
+            --red: #ef4444;
+            --radius: 12px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* ─── Header ─── */
+        .header {
+            padding: 20px 32px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            backdrop-filter: blur(20px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(10,10,15,0.85);
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .logo {
+            width: 32px; height: 32px;
+            background: linear-gradient(135deg, var(--accent), #a855f7);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 14px;
+        }
+        .header h1 { font-size: 18px; font-weight: 600; }
+        .header h1 span { color: var(--text2); font-weight: 400; }
+        .status-badge {
+            display: flex; align-items: center; gap: 6px;
+            padding: 6px 12px;
+            background: var(--green-glow);
+            border: 1px solid rgba(34,197,94,0.2);
+            border-radius: 20px;
+            font-size: 12px; font-weight: 500; color: var(--green);
+        }
+        .status-dot {
+            width: 6px; height: 6px;
+            background: var(--green);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ─── Main Layout ─── */
+        .main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+
+        /* ─── Metric Cards ─── */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .metric-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            transition: all 0.2s ease;
+        }
+        .metric-card:hover {
+            border-color: rgba(99,102,241,0.3);
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+        .metric-label {
+            font-size: 12px; font-weight: 500;
+            color: var(--text2);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .metric-value {
+            font-size: 32px; font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .metric-sub {
+            font-size: 12px; color: var(--text2);
+            margin-top: 4px;
+        }
+        .metric-value.accent { color: var(--accent); }
+        .metric-value.green { color: var(--green); }
+
+        /* ─── Benchmark Bar ─── */
+        .benchmark-bar {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .benchmark-bar h3 {
+            font-size: 14px; font-weight: 600;
+            margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .bench-row {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 12px;
+        }
+        .bench-label {
+            width: 120px; font-size: 12px; color: var(--text2);
+            text-align: right; flex-shrink: 0;
+        }
+        .bench-bar-container {
+            flex: 1; height: 24px;
+            background: var(--surface2);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+        .bench-bar {
+            height: 100%;
+            border-radius: 6px;
+            display: flex; align-items: center;
+            padding: 0 8px;
+            font-size: 11px; font-weight: 600;
+            white-space: nowrap;
+            transition: width 1s ease;
+        }
+        .bench-bar.cell { background: linear-gradient(90deg, var(--accent), #818cf8); }
+        .bench-bar.e2b { background: linear-gradient(90deg, #374151, #4b5563); }
+        .bench-val {
+            font-size: 12px; font-weight: 600;
+            width: 80px; text-align: right; flex-shrink: 0;
+        }
+
+        /* ─── Tables ─── */
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .panel-header h3 { font-size: 14px; font-weight: 600; }
+        .panel-header .count {
+            font-size: 12px; color: var(--text2);
+            background: var(--surface2);
+            padding: 2px 8px; border-radius: 10px;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            padding: 10px 16px;
+            text-align: left;
+            font-size: 11px; font-weight: 500;
+            color: var(--text2);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+        }
+        td {
+            padding: 12px 16px;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border);
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(99,102,241,0.04); }
+        .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px; font-weight: 500;
+        }
+        .badge-running { background: var(--green-glow); color: var(--green); }
+        .badge-persistent { background: var(--accent-glow); color: var(--accent); }
+        .badge-ephemeral { background: rgba(255,255,255,0.05); color: var(--text2); }
+        .latency { color: var(--green); font-weight: 600; }
+
+        /* ─── Footer ─── */
+        .footer {
+            padding: 20px 32px;
+            text-align: center;
+            color: var(--text2);
+            font-size: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .footer a { color: var(--accent); text-decoration: none; }
+
+        /* ─── Responsive ─── */
+        @media (max-width: 900px) {
+            .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+            .header { padding: 16px 20px; }
+            .main { padding: 16px 20px; }
+        }
+        @media (max-width: 600px) {
+            .metrics-grid { grid-template-columns: 1fr; }
+        }
+
+        /* ─── Loading shimmer ─── */
+        .shimmer {
+            background: linear-gradient(90deg, var(--surface2) 25%, var(--surface) 50%, var(--surface2) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <div class="logo">⚡</div>
+            <h1>.cell <span>Dashboard</span></h1>
+        </div>
+        <div class="status-badge">
+            <div class="status-dot"></div>
+            <span id="status-text">Connecting...</span>
+        </div>
+    </div>
+
+    <div class="main">
+        <!-- Metric Cards -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">Active Cells</div>
+                <div class="metric-value accent" id="active-cells">—</div>
+                <div class="metric-sub" id="persistent-count">— persistent</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Total Executions</div>
+                <div class="metric-value green" id="total-execs">—</div>
+                <div class="metric-sub" id="exec-rate">— exec/min</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Avg Latency</div>
+                <div class="metric-value" id="avg-latency">—</div>
+                <div class="metric-sub">per execution</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">vs E2B</div>
+                <div class="metric-value green" id="speedup">300×+</div>
+                <div class="metric-sub">faster persistent sessions</div>
+            </div>
+        </div>
+
+        <!-- Benchmark Comparison -->
+        <div class="benchmark-bar">
+            <h3>⚡ Head-to-Head vs E2B <span style="color:var(--text2);font-weight:400;font-size:12px">(real benchmarks, April 2026)</span></h3>
+            <div class="bench-row">
+                <div class="bench-label">Persistent Session</div>
+                <div class="bench-bar-container">
+                    <div class="bench-bar cell" style="width: 0.3%">Cell 0.9ms</div>
+                </div>
+                <div class="bench-val" style="color:var(--green)">0.9ms ⚡</div>
+            </div>
+            <div class="bench-row">
+                <div class="bench-label">&nbsp;</div>
+                <div class="bench-bar-container">
+                    <div class="bench-bar e2b" style="width: 100%">E2B 300ms</div>
+                </div>
+                <div class="bench-val" style="color:var(--text2)">300ms</div>
+            </div>
+            <div style="height:8px"></div>
+            <div class="bench-row">
+                <div class="bench-label">Simple Exec</div>
+                <div class="bench-bar-container">
+                    <div class="bench-bar cell" style="width: 0.4%">Cell 1ms</div>
+                </div>
+                <div class="bench-val" style="color:var(--accent)">1ms</div>
+            </div>
+            <div class="bench-row">
+                <div class="bench-label">&nbsp;</div>
+                <div class="bench-bar-container">
+                    <div class="bench-bar e2b" style="width: 100%">E2B 216ms</div>
+                </div>
+                <div class="bench-val" style="color:var(--text2)">216ms</div>
+            </div>
+            <div style="height:8px"></div>
+            <div class="bench-row">
+                <div class="bench-label">File I/O</div>
+                <div class="bench-bar-container">
+                    <div class="bench-bar cell" style="width: 17%">Cell 42ms</div>
+                </div>
+                <div class="bench-val" style="color:var(--accent)">42ms</div>
+            </div>
+            <div class="bench-row">
+                <div class="bench-label">&nbsp;</div>
+                <div class="bench-bar-container">
+                    <div class="bench-bar e2b" style="width: 100%">E2B 251ms</div>
+                </div>
+                <div class="bench-val" style="color:var(--text2)">251ms</div>
+            </div>
+            <div style="height:8px"></div>
+            <div class="bench-row">
+                <div class="bench-label">Math Heavy</div>
+                <div class="bench-bar-container">
+                    <div class="bench-bar cell" style="width: 15%">Cell 42ms</div>
+                </div>
+                <div class="bench-val" style="color:var(--accent)">42ms</div>
+            </div>
+            <div class="bench-row">
+                <div class="bench-label">&nbsp;</div>
+                <div class="bench-bar-container">
+                    <div class="bench-bar e2b" style="width: 100%">E2B 288ms</div>
+                </div>
+                <div class="bench-val" style="color:var(--text2)">288ms</div>
+            </div>
+            <div style="margin-top:12px;font-size:11px;color:var(--text2)">
+                Persistent session uses .syn code replay (transpile → WASM → execute in 0.9ms). Falls back to CPython-WASI (182ms) for unsupported constructs.
+            </div>
+        </div>
+
+        <!-- Active Cells Table -->
+        <div class="panel">
+            <div class="panel-header">
+                <h3>Active Cells</h3>
+                <span class="count" id="cell-count">0</span>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Cell ID</th>
+                        <th>Template</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Executions</th>
+                        <th>Last Active</th>
+                    </tr>
+                </thead>
+                <tbody id="cells-table">
+                    <tr><td colspan="6" style="text-align:center;color:var(--text2);padding:40px">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="footer">
+        Synapse .cell v0.2.0 — <a href="/">Landing Page</a> · <a href="/v1/health">API Health</a> · <a href="/v1/stats">Stats JSON</a>
+    </div>
+
+    <script>
+        const API_KEY = new URLSearchParams(location.search).get('key') || '';
+        const headers = { 'Content-Type': 'application/json' };
+        if (API_KEY) headers['Authorization'] = `Bearer ${API_KEY}`;
+
+        let lastExecs = 0;
+        let lastTime = Date.now();
+
+        async function fetchStats() {
+            try {
+                const resp = await fetch('/v1/stats', { headers });
+                if (!resp.ok) throw new Error('Auth required');
+                const data = await resp.json();
+
+                document.getElementById('active-cells').textContent = data.active_cells;
+                document.getElementById('persistent-count').textContent = `${data.persistent_cells} persistent`;
+                document.getElementById('total-execs').textContent = data.total_executions.toLocaleString();
+
+                // Calculate exec rate
+                const now = Date.now();
+                const elapsed = (now - lastTime) / 60000; // minutes
+                if (lastExecs > 0 && elapsed > 0) {
+                    const rate = ((data.total_executions - lastExecs) / elapsed).toFixed(1);
+                    document.getElementById('exec-rate').textContent = `${rate} exec/min`;
+                }
+                lastExecs = data.total_executions;
+                lastTime = now;
+
+                // Avg latency from metrics
+                if (data.metrics && data.metrics.templates) {
+                    const templates = Object.values(data.metrics.templates);
+                    if (templates.length > 0) {
+                        const totalLatency = templates.reduce((a, t) => a + (t.avg_latency_ms || 0), 0);
+                        const avgLatency = totalLatency / templates.length;
+                        document.getElementById('avg-latency').textContent = avgLatency < 1 ? '<1ms' : `${avgLatency.toFixed(0)}ms`;
+                    }
+                }
+
+                document.getElementById('status-text').textContent = 'Operational';
+            } catch (e) {
+                document.getElementById('status-text').textContent = 'Auth Required — add ?key=YOUR_KEY';
+            }
+        }
+
+        async function fetchCells() {
+            try {
+                const resp = await fetch('/v1/cells', { headers });
+                if (!resp.ok) return;
+                const cells = await resp.json();
+
+                document.getElementById('cell-count').textContent = cells.length;
+
+                const tbody = document.getElementById('cells-table');
+                if (cells.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:40px">No active cells</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = cells.map(c => {
+                    const id = c.cell_id.slice(0, 12) + '...';
+                    const typeBadge = c.persistent
+                        ? '<span class="badge badge-persistent">persistent</span>'
+                        : '<span class="badge badge-ephemeral">ephemeral</span>';
+                    const statusBadge = c.status === 'Running'
+                        ? '<span class="badge badge-running">● running</span>'
+                        : `<span class="badge badge-ephemeral">${c.status}</span>`;
+                    const lastActive = c.last_active_ms
+                        ? timeAgo(c.last_active_ms)
+                        : '—';
+
+                    return `<tr>
+                        <td class="mono">${id}</td>
+                        <td>${c.template}</td>
+                        <td>${typeBadge}</td>
+                        <td>${statusBadge}</td>
+                        <td class="mono latency">${c.executions}</td>
+                        <td>${lastActive}</td>
+                    </tr>`;
+                }).join('');
+            } catch (e) {
+                console.error('Failed to fetch cells:', e);
+            }
+        }
+
+        function timeAgo(ms) {
+            const diff = Date.now() - ms;
+            if (diff < 60000) return `${Math.floor(diff/1000)}s ago`;
+            if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
+            return `${Math.floor(diff/3600000)}h ago`;
+        }
+
+        // Initial fetch + auto-refresh
+        fetchStats();
+        fetchCells();
+        setInterval(fetchStats, 5000);
+        setInterval(fetchCells, 5000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+# Build stage — use bookworm for glibc compatibility with runtime stage
+FROM rust:1.83-bookworm AS builder
+
+# Install curl/ca-certificates for download_runtimes.sh
+RUN apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . /app
+
+# Download Wasm runtimes (.wasm / python stdlib) into /app/templates
+RUN bash tools/download_runtimes.sh
+
+WORKDIR /app/cell/gateway
+# Build gateway without default features (no pyo3)
+# Use CARGO_NET_RETRY for flaky network in Docker builds
+ENV CARGO_NET_RETRY=5
+RUN cargo build --bin synapse-gateway --release --no-default-features
+
+# Runtime stage — MUST match builder's glibc (bookworm)
+FROM debian:bookworm-slim
+
+# TLS certs + curl for healthcheck
+RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the compiled standalone gateway binary
+COPY --from=builder /app/cell/gateway/target/release/synapse-gateway /usr/local/bin/synapse-gateway
+# Copy the downloaded runtimes / templates 
+COPY --from=builder /app/templates /app/templates
+
+# Setup environment
+ENV SYNAPSE_ROOT=/app
+ENV RUST_LOG=info
+
+# Expose ports
+# 8000: Gateway HTTP (Core API)
+# 8002: Cell API (Internal/Sandbox API)
+# 8003: WebSocket PTY
+EXPOSE 8000
+EXPOSE 8002
+EXPOSE 8003
+
+# Declare volumes for persistent state
+VOLUME /sandbox_volumes
+
+# Add a healthcheck leveraging the Cell API health endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://127.0.0.1:8002/v1/health || exit 1
+
+ENTRYPOINT ["synapse-gateway"]

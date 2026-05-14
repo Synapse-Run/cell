@@ -1,0 +1,6 @@
+{
+  "name": "requests",
+  "version": "latest",
+  "type": "pure-python",
+  "installed_via": "pip"
+}

@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "synapserun"
+version = "0.5.2"
+description = "Synapse Cell SDK — E2B-compatible sandboxed code execution, 200x faster, with streaming, filesystem, git, PTY, Dockerfile transpilation, and bundled Wasm runtimes."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "AGPL-3.0-or-later"
+authors = [
+    {name = "Freshfield AI", email = "hello@synapserun.dev"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Testing",
+    "Topic :: System :: Emulators",
+]
+
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Framework integrations — customer picks what they need
+# Native Wasm engine for local mode (pip install synapserun[local])
+local = ["synapse-cell>=0.2.0"]
+langchain = ["langchain-core>=0.3.0", "pydantic>=2.0"]
+crewai = ["crewai>=0.80.0", "pydantic>=2.0"]
+openai-agents = ["openai-agents"]
+autogen = ["pyautogen>=0.2.0"]
+llamaindex = ["llama-index-core>=0.11.0"]
+# Install all integrations
+all = [
+    "langchain-core>=0.3.0",
+    "crewai>=0.80.0",
+    "openai-agents",
+    "pyautogen>=0.2.0",
+    "llama-index-core>=0.11.0",
+    "websocket-client>=1.6.0",  # for PTY
+]
+
+[project.urls]
+Homepage = "https://synapserun.dev"
+Documentation = "https://synapserun.dev/docs"
+"Support" = "https://synapserun.dev"
+
+[project.scripts]
+synapse = "synapse.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["synapse*"]
+exclude = ["js*"]
+
+[tool.setuptools.package-data]
+# Bundle the Wasm runtime binaries + CPython stdlib with the wheel.
+# These files enable zero-config local mode — the customer's first
+# `Cell(api_url="local")` just works.
+"synapse" = [
+    "_templates/python3.wasm",
+    "_templates/quickjs.wasm",
+    "_templates/lib/python312.zip",
+    "_templates/lib/python3.12/**",
+    "syn_few_shot.json",
+]

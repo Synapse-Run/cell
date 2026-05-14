@@ -1,0 +1,5 @@
+name: "python-3.11-data-science"
+runtime: "python3"
+description: "Data science Python environment"
+packages: ["httpx", "pydantic", "requests"]
+user: "sandbox"
