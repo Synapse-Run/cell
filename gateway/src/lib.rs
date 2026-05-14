@@ -1,7 +1,23 @@
+// Structural lint exceptions — these are intentional architectural decisions:
+// - too_many_arguments: run_worker() needs all its params for thread-per-core
+// - wrong_self_convention: FFI naming conventions differ from Rust idioms
+// - dead_code: feature-gated code paths (PyO3 vs binary)
+// - type_complexity: PyO3 run() return tuple is 10-wide for receipts
+// Style lints suppressed for existing codebase (non-correctness):
+#![allow(
+    clippy::too_many_arguments,
+    clippy::wrong_self_convention,
+    clippy::needless_range_loop,
+    clippy::redundant_pattern_matching,
+    clippy::match_like_matches_macro,
+    clippy::nonminimal_bool,
+    clippy::vec_init_then_push,
+    clippy::suspicious_open_options,
+    clippy::empty_line_after_doc_comments,
+    clippy::type_complexity,
+    dead_code
+)]
 #![cfg(feature = "python-ext")]
-// Library modules are consumed by external binaries — suppress false-positive
-// dead_code warnings for structs/functions that are public API surface.
-#![allow(dead_code)]
 use pyo3::prelude::*;
 use std::path::PathBuf;
 
@@ -62,7 +78,7 @@ impl NativeCell {
                 std::collections::HashMap::new(),
                 None,
             )
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(NativeCell {
             manager,
@@ -107,7 +123,7 @@ impl NativeCell {
         let result = self
             .manager
             .exec_persistent(&self.cell_id, &code, None)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         // JC-014 (2026-04-28): Receipt fields plumbed through PyO3 so free-tier
         // local-mode cells produce real receipts. Previously result.receipt was

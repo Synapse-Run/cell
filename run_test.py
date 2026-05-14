@@ -16,8 +16,14 @@ def audit():
     try:
         sandbox = Sandbox(api_url="local")
     except Exception as e:
-        print(f"[!] FATAL: Setup failed. Ensure PyO3 is built via Maturin.")
-        return
+        print(f"[!] FATAL: Setup failed: {e}")
+        print(f"[*] Search path: {sys.path}")
+        try:
+            import synapse_rust_core
+            print("[*] synapse_rust_core found but Sandbox init failed.")
+        except ImportError:
+            print("[!] synapse_rust_core NOT FOUND. Maturin build/install may have failed.")
+        sys.exit(1)
         
     init_time = (time.time() - start_time) * 1000
     print(f"[*] Boot Protocol (PyO3 Zero-IPC): {init_time:.3f}ms")
