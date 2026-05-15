@@ -11,7 +11,14 @@ def audit():
     print("\n========================================")
     print(" SYNAPSE CELL: RED TEAM MILITARY AUDIT ")
     print("========================================")
-    
+    print("[*] Warming up Wasm engine (compilation overhead)...")
+    try:
+        warmup = Sandbox(api_url="local")
+        warmup.run_code("print('warm')")
+        warmup.kill()
+    except:
+        pass
+
     start_time = time.time()
     try:
         sandbox = Sandbox(api_url="local")
