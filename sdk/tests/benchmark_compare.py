@@ -17,7 +17,6 @@ Usage:
     python3 benchmark_compare.py
 """
 import os
-import sys
 import json
 import time
 import statistics
@@ -54,7 +53,7 @@ def bench_cell_cold_start():
     """Measure cold start: create cell + first exec."""
     start = time.time()
     cell = Cell(api_key=CELL_API_KEY, api_url=CELL_API_URL)
-    result = cell.run("print('cold')")
+    cell.run("print('cold')")
     elapsed = (time.time() - start) * 1000
     cell.kill()
     return elapsed
@@ -63,7 +62,7 @@ def bench_e2b_cold_start():
     """Measure cold start: create sandbox + first exec."""
     start = time.time()
     sandbox = Sandbox.create()
-    result = sandbox.run_code("print('cold')")
+    sandbox.run_code("print('cold')")
     elapsed = (time.time() - start) * 1000
     sandbox.kill()
     return elapsed
@@ -79,7 +78,7 @@ def bench_e2b_simple_exec():
     """Simple exec: print(42)."""
     sandbox = Sandbox.create()
     start = time.time()
-    result = sandbox.run_code("print(42)")
+    sandbox.run_code("print(42)")
     elapsed = (time.time() - start) * 1000
     sandbox.kill()
     return elapsed
@@ -92,7 +91,7 @@ def bench_cell_multistep():
     cell.run("class Vec:\n    def __init__(self, x, y): self.x, self.y = x, y\n    def mag(self): return math.sqrt(self.x**2 + self.y**2)")
     cell.run("v = Vec(3, 4)")
     cell.run("v.x = v.x * 2")
-    result = cell.run("print(f'{v.mag():.4f}')")
+    cell.run("print(f'{v.mag():.4f}')")
     elapsed = (time.time() - start) * 1000
     cell.kill()
     return elapsed
@@ -105,7 +104,7 @@ def bench_e2b_multistep():
     sandbox.run_code("class Vec:\n    def __init__(self, x, y): self.x, self.y = x, y\n    def mag(self): return math.sqrt(self.x**2 + self.y**2)")
     sandbox.run_code("v = Vec(3, 4)")
     sandbox.run_code("v.x = v.x * 2")
-    result = sandbox.run_code("print(f'{v.mag():.4f}')")
+    sandbox.run_code("print(f'{v.mag():.4f}')")
     elapsed = (time.time() - start) * 1000
     sandbox.kill()
     return elapsed
@@ -147,7 +146,7 @@ data.sort()
 print(f'fib(1000) digits: {len(str(f))}, sorted: {len(data)}')
 """
     start = time.time()
-    result = sandbox.run_code(code)
+    sandbox.run_code(code)
     elapsed = (time.time() - start) * 1000
     sandbox.kill()
     return elapsed
@@ -183,7 +182,7 @@ h = hashlib.sha256(content.encode()).hexdigest()[:16]
 print(f'size={len(content)}, hash={h}')
 """
     start = time.time()
-    result = sandbox.run_code(code)
+    sandbox.run_code(code)
     elapsed = (time.time() - start) * 1000
     sandbox.kill()
     return elapsed
@@ -200,7 +199,7 @@ def bench_cell_concurrent():
                 cell.kill()
                 return r.latency_ms
             futures.append(pool.submit(task))
-        results = [f.result() for f in as_completed(futures)]
+        [f.result() for f in as_completed(futures)]
     elapsed = (time.time() - start) * 1000
     return elapsed
 
@@ -294,7 +293,7 @@ def main():
     
     # Print comparison table
     print(f"\n{'='*70}")
-    print(f"  RESULTS SUMMARY")
+    print("  RESULTS SUMMARY")
     print(f"{'='*70}")
     print(f"{'Test':<35} {'Cell p50':>10} {'E2B p50':>10} {'Speedup':>10}")
     print(f"{'─'*35} {'─'*10} {'─'*10} {'─'*10}")

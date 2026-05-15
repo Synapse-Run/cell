@@ -311,7 +311,7 @@ class TestP99Latency:
         p50, p95, p99 = latencies[49], latencies[94], latencies[98]
 
         print(f"\n{'='*60}")
-        print(f"  .syn FAST PATH  (100 runs, 5 warmup)")
+        print("  .syn FAST PATH  (100 runs, 5 warmup)")
         print(f"  p50  = {p50:.3f} ms")
         print(f"  p95  = {p95:.3f} ms")
         print(f"  p99  = {p99:.3f} ms")
@@ -345,7 +345,7 @@ class TestP99Latency:
         p95 = latencies[18]
 
         print(f"\n{'='*60}")
-        print(f"  CPython-WASI FALLBACK  (20 runs, 3 warmup)")
+        print("  CPython-WASI FALLBACK  (20 runs, 3 warmup)")
         print(f"  p50  = {p50:.3f} ms")
         print(f"  p95  = {p95:.3f} ms")
         print(f"  mean = {statistics.mean(latencies):.3f} ms")

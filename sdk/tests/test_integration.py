@@ -7,7 +7,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from synapse import Synapse, ExecutionResult, SynapseError, AssertionError
+from synapse import Synapse, ExecutionResult, SynapseError
 from synapse.langchain_tool import SynapseExecuteTool, SynapseValidateTool
 
 
@@ -168,7 +168,7 @@ def test_repr():
     """Test ExecutionResult repr."""
     r = ExecutionResult(42, "hello", 4096, 1.5)
     assert "42" in repr(r)
-    print(f"PASS: repr")
+    print("PASS: repr")
 
 
 if __name__ == "__main__":

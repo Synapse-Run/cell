@@ -74,7 +74,7 @@ class SynapseGenerator:
             if os.path.exists(path):
                 return path
         raise FileNotFoundError(
-            f"No model checkpoint found. Looked in:\n" +
+            "No model checkpoint found. Looked in:\n" +
             "\n".join(f"  {p}" for p in candidates)
         )
 

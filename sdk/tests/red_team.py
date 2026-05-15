@@ -19,7 +19,6 @@ import json
 import time
 import hashlib
 import importlib.util
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ── Load Cell SDK directly ─────────────────────────────────────────
 spec = importlib.util.spec_from_file_location(
@@ -58,7 +57,7 @@ def run_test(fn):
     print(f"{'━'*60}")
     try:
         fn()
-        print(f"  ✅ PASSED")
+        print("  ✅ PASSED")
         passed += 1
         results.append({"name": name, "category": category, "status": "PASS"})
     except AssertionError as e:
@@ -76,7 +75,7 @@ def run_test(fn):
 @test("1. Auth bypass — no API key", "SECURITY")
 def test_auth_no_key():
     """All authenticated endpoints should reject requests without API key."""
-    import http.client, ssl
+    import http.client
     conn = http.client.HTTPSConnection("localhost:8002", timeout=10)
     
     # POST /v1/cells (create)
@@ -196,7 +195,7 @@ def test_body_size_limits():
     resp = conn.getresponse()
     resp.read()
     conn.close()
-    assert resp.status == 200, f"Server crashed after large payload"
+    assert resp.status == 200, "Server crashed after large payload"
 
 
 @test("5. Rapid-fire DoS resistance", "SECURITY")
@@ -329,7 +328,7 @@ while True:
     health_cell = Cell(api_key=API_KEY, api_url=API_URL, persistent=False)
     r = health_cell.run("print('alive')")
     assert "alive" in r.stdout, "Server died after resource exhaustion attack"
-    print(f"  server health → OK")
+    print("  server health → OK")
     health_cell.kill()
     cell.kill()
 
@@ -354,7 +353,7 @@ def test_code_injection():
                          {"Content-Type": "application/json",
                           "Authorization": f"Bearer {API_KEY}"})
             resp = conn.getresponse()
-            body = resp.read().decode()
+            resp.read().decode()
             conn.close()
             print(f"  '{injected_id[:30]}' → HTTP {resp.status}")
             # Should be 404 (cell not found) or 400, never 200
@@ -388,16 +387,18 @@ def test_keepalive_exhaustion():
     print(f"  Opened {created}/50 keep-alive connections")
     # Clean up
     for c in conns:
-        try: c.close()
-        except: pass
+        try:
+            c.close()
+        except:
+            pass
     # Server should still work
     conn = http.client.HTTPSConnection("localhost:8002", timeout=10)
     conn.request("GET", "/v1/health")
     resp = conn.getresponse()
     resp.read()
     conn.close()
-    assert resp.status == 200, f"Server unhealthy after connection flood"
-    print(f"  Server health after flood → OK")
+    assert resp.status == 200, "Server unhealthy after connection flood"
+    print("  Server health after flood → OK")
 
 
 @test("12. Malformed JSON handling", "CORRECTNESS")
@@ -419,7 +420,7 @@ def test_malformed_json():
                          {"Content-Type": "application/json",
                           "Authorization": f"Bearer {API_KEY}"})
             resp = conn.getresponse()
-            body = resp.read()
+            resp.read()
             conn.close()
             print(f"  {payload[:30]}... → HTTP {resp.status}")
             assert resp.status in (400, 413, 200), f"Unexpected status {resp.status}"
@@ -485,7 +486,7 @@ def test_receipt_uniqueness():
     actual_hash = receipts[0].code_hash
     print(f"  Expected hash: {expected_hash[:16]}...")
     print(f"  Actual hash:   {actual_hash[:16]}...")
-    assert actual_hash == expected_hash, f"Code hash mismatch"
+    assert actual_hash == expected_hash, "Code hash mismatch"
     
     cell.kill()
 
@@ -542,7 +543,7 @@ def main():
     
     # Summary
     print(f"\n{'═'*60}")
-    print(f"  RED TEAM RESULTS")
+    print("  RED TEAM RESULTS")
     print(f"{'═'*60}")
     
     for r in results:

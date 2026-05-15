@@ -173,7 +173,7 @@ def test_background_command_status():
         handle.wait(timeout_ms=10000)
         # After wait(), command should be finished
         assert not handle.is_running, \
-            f"Expected is_running=False after wait, got True"
+            "Expected is_running=False after wait, got True"
         assert handle.exit_code == 0, f"exit_code: {handle.exit_code}"
         print("PASS: background command status transitions correctly")
         return True

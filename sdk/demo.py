@@ -64,7 +64,7 @@ def demo_cell_basic():
     print(f"  ✓ Receipt chain: {r3.receipt}")
 
     cell.kill()
-    print(f"  ✓ Cell killed")
+    print("  ✓ Cell killed")
     return True
 
 
@@ -126,7 +126,7 @@ def demo_volumes():
     content = "Persistent data survives sandbox restarts."
     b64 = base64.b64encode(content.encode()).decode()
     raw("POST", "/v1/volumes/demo-vol/files", {"path": "data.txt", "data": b64})
-    print(f"  ✓ Wrote data.txt to volume")
+    print("  ✓ Wrote data.txt to volume")
 
     # Read file
     resp = raw("GET", "/v1/volumes/demo-vol/files?path=data.txt")
@@ -139,7 +139,7 @@ def demo_volumes():
 
     # Cleanup
     raw("DELETE", "/v1/volumes/demo-vol")
-    print(f"  ✓ Volume deleted")
+    print("  ✓ Volume deleted")
     return True
 
 
@@ -162,7 +162,7 @@ def demo_e2b_compat():
     print(f"  ✓ files.write/read: {content!r}")
 
     sbx.kill()
-    print(f"  ✓ Sandbox killed")
+    print("  ✓ Sandbox killed")
     return True
 
 
@@ -176,7 +176,7 @@ def demo_timing():
     for i in range(10):
         t0 = time.perf_counter()
         cell = Cell(api_url=GATEWAY, api_key=API_KEY)
-        r = cell.run("1+1")
+        cell.run("1+1")
         elapsed = (time.perf_counter() - t0) * 1000
         times.append(elapsed)
         cell.kill()

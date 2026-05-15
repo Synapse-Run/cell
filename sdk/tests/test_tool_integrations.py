@@ -167,8 +167,6 @@ class TestToolsInitExports(unittest.TestCase):
         from synapse.tools import (
             SynapseExecuteTool,
             SynapseGenerateTool,
-            SynapseExecuteCrewTool,
-            SynapseGenerateCrewTool,
         )
         # Access .name on instances (Pydantic v2 fields not on class)
         self.assertEqual(SynapseExecuteTool().name, "synapse_execute")

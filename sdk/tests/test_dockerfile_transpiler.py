@@ -14,7 +14,6 @@ from synapse.dockerfile_transpiler import (
     transpile_dockerfile,
     transpile_dockerfile_file,
     TranspileError,
-    Warning as TWarning,
 )
 
 

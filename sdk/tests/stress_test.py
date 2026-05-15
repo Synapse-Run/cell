@@ -27,7 +27,6 @@ import sys
 import json
 import time
 import random
-import string
 import importlib.util
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -402,7 +401,7 @@ def test_sse_streaming():
         assert e['text'] == f'line-{i}', f"Event {i}: expected 'line-{i}', got '{e['text']}'"
     
     cell.kill()
-    return (f"20 lines streamed in order, result event received", {"events": len(events)})
+    return ("20 lines streamed in order, result event received", {"events": len(events)})
 
 # ═══════════════════════════════════════════════════════════════
 #  TEST 9: Error Handling
@@ -555,7 +554,7 @@ def test_concurrent_persistent():
             cell.run(f"counter = {worker_id * 1000}")
             
             for step in range(10):
-                result = cell.run(f"counter += 1\nprint(counter)")
+                result = cell.run("counter += 1\nprint(counter)")
                 expected = worker_id * 1000 + step + 1
                 actual = int(result.stdout.strip())
                 assert actual == expected, f"W{worker_id} step {step}: expected {expected}, got {actual}"
@@ -624,7 +623,7 @@ def main():
     failed = sum(1 for r in results if not r.passed)
     
     print(f"\n{'═'*60}")
-    print(f"  STRESS TEST RESULTS")
+    print("  STRESS TEST RESULTS")
     print(f"{'═'*60}")
     print(f"  Total time: {suite_elapsed:.0f}s")
     print(f"  Tests:      {passed} passed, {failed} failed, {len(results)} total")

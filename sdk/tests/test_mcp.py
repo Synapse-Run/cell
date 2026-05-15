@@ -12,7 +12,6 @@ import json
 import subprocess
 import sys
 import os
-import select
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.join(SCRIPT_DIR, "..", "..")

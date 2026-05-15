@@ -18,7 +18,11 @@ Attack surfaces:
 
 Target: http://localhost:8002
 """
-import sys, os, time, json, hashlib, concurrent.futures, traceback
+import sys
+import os
+import time
+import hashlib
+import concurrent.futures
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import importlib.util
@@ -188,7 +192,7 @@ try:
     # behavior — not a data corruption issue.
     def send_exec(i):
         try:
-            r = cell.run(f"counter = counter + 1\nprint(counter)")
+            r = cell.run("counter = counter + 1\nprint(counter)")
             return (i, r.stdout.strip(), r.exit_code)
         except Exception as e:
             return (i, str(e), -1)

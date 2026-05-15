@@ -227,7 +227,7 @@ if __name__ == '__main__':
 
     # Test fast mode cache hit (second call)
     r2 = evaluator.execute_fast("@f 0 main [ + 21 21 ]")
-    assert r2['result'] == 42 and r2.get('cached') == True, f"Cache hit failed: {r2}"
+    assert r2['result'] == 42 and r2.get('cached'), f"Cache hit failed: {r2}"
     print(f"  ✅ cache_hit (cached={r2.get('cached')})")
 
     print()

@@ -15,7 +15,6 @@ Tests 13-14 always run (local-mode rejection checks).
 """
 import sys
 import os
-import time
 
 # Add parent directory so we can import synapse without installing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

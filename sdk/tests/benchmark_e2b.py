@@ -40,8 +40,8 @@ def run_e2b_benchmark():
 def run_cell_benchmark():
     # Simulated/Extrapolated from local tests to give apple-to-apple on same output.
     # We use hard Wasm specs derived from previous benchmarks.
-    print(f"Synapse Cell Cold Start Latency: < 0.6 ms")
-    print(f"Synapse Cell Execution Latency: < 1.0 ms")
+    print("Synapse Cell Cold Start Latency: < 0.6 ms")
+    print("Synapse Cell Execution Latency: < 1.0 ms")
     print("Synapse Cell Output: 20")
     return 0.6, 1.0
 
